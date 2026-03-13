@@ -11,6 +11,7 @@ export type AppItem = {
   name: string;
   type: 'system' | 'user';
   url: string;
+  status?: 'running' | 'stopped' | 'warning';
 };
 
 export type WifiSecurity = 'WPA' | 'WEP' | 'nopass';
@@ -34,9 +35,13 @@ export type ScanResult = {
   };
 };
 
+// 状态机：按产品文档流程图定义
+// scan → connecting → (wifi-guide?) → desktop → webview
+// 任意步骤失败 → connect-failed
 export type AppPhase =
-  | 'scan'
-  | 'connecting'
-  | 'connect-failed'
-  | 'desktop'
-  | 'webview';
+  | 'scan'          // ① 扫码界面（含启动检查历史配置）
+  | 'connecting'    // ④ 连接中（WiFi连接 + 内网校验）
+  | 'wifi-guide'   // ③ WiFi手动引导（降级兜底）
+  | 'connect-failed' // ② 失败重试
+  | 'desktop'       // ⑤ 微服务桌面
+  | 'webview';      // 内嵌浏览器

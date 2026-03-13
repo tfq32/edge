@@ -5,6 +5,5 @@ export function getDeviceLayout() {
   const shortest = Math.min(width, height);
   const isTablet = shortest >= 768;
   const columns = isTablet ? 8 : 4;
-  const horizontalPadding = isTablet ? 32 : 16;
-  return { width, height, isTablet, columns, horizontalPadding };
+  return { width, height, isTablet, columns };
 }
