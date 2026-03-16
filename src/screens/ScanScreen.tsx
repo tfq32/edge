@@ -12,12 +12,12 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Camera, CameraType, type OnReadCodeData } from 'react-native-camera-kit';
+import { Camera, CameraType } from 'react-native-camera-kit';
 import WifiManager from 'react-native-wifi-reborn';
 
 import type { ScanScreenProps } from '../navigation/types';
 import { colors } from '../theme/colors';
-import { parseWifiQr } from '../utils/wifi';
+import { parseQr } from '../utils/wifi';
 import { useAppStore } from '../store/appStore';
 import { getConnection, saveConnection } from '../services/storage';
 import { getDeviceLayout } from '../utils/device';
@@ -49,7 +49,7 @@ async function requestWifiPermissions(): Promise<boolean> {
 
 export function ScanScreen({ navigation }: ScanScreenProps) {
   const { isTablet } = getDeviceLayout();
-  const { setRecord, setNotice } = useAppStore();
+  const { setQrData ,setRecord } = useAppStore();
 
   const [cameraReady, setCameraReady] = useState(Platform.OS !== 'android');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -104,9 +104,9 @@ export function ScanScreen({ navigation }: ScanScreenProps) {
       setProcessingText('正在开启 WiFi...');
       try {
         await WifiManager.setEnabled(true);
-        await new Promise(r => setTimeout(r, 1800));
+        await new Promise<void>(r => setTimeout(r, 1800));
       } catch {
-        navigation.navigate('WifiGuide', { ssid, password });
+        navigation.navigate('WifiGuide');
         return false;
       }
     }
@@ -116,7 +116,7 @@ export function ScanScreen({ navigation }: ScanScreenProps) {
     try {
       await WifiManager.connectToProtectedSSID(ssid, pwd, security === 'WEP', hidden);
     } catch {
-      navigation.navigate('WifiGuide', { ssid, password });
+      navigation.navigate('WifiGuide');
       return false;
     }
 
@@ -128,14 +128,15 @@ export function ScanScreen({ navigation }: ScanScreenProps) {
     setProcessingText('正在识别...');
     setIsProcessing(true);
     try {
-      const payload = parseWifiQr(code);
-      const ok = await connectToWifi(payload.ssid, payload.password, payload.security, payload.hidden);
+      const { wifi, server } = parseQr(code);
+      setQrData({ wifi, server });
+      const ok = await connectToWifi(wifi.ssid, wifi.password, wifi.security, wifi.hidden);
       if (!ok) { setIsProcessing(false); return; }
 
-      const record = { ...payload, updatedAt: Date.now() };
+      const record: ConnectionRecord = { ...wifi, gatewayIp: server?.ip, gatewayPort: server?.port, updatedAt: Date.now() };
       saveConnection(record);
       setRecord(record);
-      setNotice(`已连接 ${payload.ssid}`);
+      console.log('Connected to WiFi:', record);
       navigation.replace('Loading');
     } catch (err) {
       setIsProcessing(false);
@@ -145,7 +146,7 @@ export function ScanScreen({ navigation }: ScanScreenProps) {
         code: 'SCAN_FAILED',
       });
     }
-  }, [connectToWifi, navigation, setRecord, setNotice]);
+  }, [connectToWifi, navigation, setRecord]);
 
   // ── 点击历史记录连接 ────────────────────────────────────────
   const handleResumeLastRecord = useCallback(async () => {
@@ -162,7 +163,6 @@ export function ScanScreen({ navigation }: ScanScreenProps) {
       if (!ok) { setIsProcessing(false); return; }
 
       setRecord(lastRecord);
-      setNotice(`已连接 ${lastRecord.ssid}`);
       navigation.replace('Loading');
     } catch (err) {
       setIsProcessing(false);
@@ -171,9 +171,9 @@ export function ScanScreen({ navigation }: ScanScreenProps) {
         code: 'RESUME_FAILED',
       });
     }
-  }, [lastRecord, isProcessing, connectToWifi, navigation, setRecord, setNotice]);
+  }, [lastRecord, isProcessing, connectToWifi, navigation, setRecord]);
 
-  const handleReadCode = (event: OnReadCodeData) => {
+  const handleReadCode = (event: { nativeEvent: { codeStringValue: string; }; }) => {
     if (isProcessing) return;
     const code = event.nativeEvent.codeStringValue?.trim();
     if (!code || code === lastScannedRef.current) return;

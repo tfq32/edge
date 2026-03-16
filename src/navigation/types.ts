@@ -12,7 +12,7 @@ import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-n
 export type RootStackParamList = {
   Scan: undefined;
   Loading: undefined;
-  WifiGuide: { ssid: string; password: string };
+  WifiGuide: undefined;
   Error: { message: string; code?: string };
   Desktop: undefined;
   Webview: { url: string; title?: string };

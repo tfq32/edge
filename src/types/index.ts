@@ -14,6 +14,19 @@ export type AppItem = {
   status?: 'running' | 'stopped' | 'warning';
 };
 
+export type QrCodeData = {
+  wifi: {
+    ssid: string;
+    password?: string;
+    security?: WifiSecurity;
+    hidden?: boolean;
+  },
+  server?: {
+    ip: string;
+    port: number;
+  }
+}
+
 export type WifiSecurity = 'WPA' | 'WEP' | 'nopass';
 
 export type ConnectionRecord = {
@@ -22,26 +35,6 @@ export type ConnectionRecord = {
   security?: WifiSecurity;
   hidden?: boolean;
   gatewayIp?: string;
+  gatewayPort?: number;
   updatedAt: number;
 };
-
-export type ScanResult = {
-  raw: string;
-  parsed: {
-    ssid: string;
-    password: string;
-    security: WifiSecurity;
-    hidden: boolean;
-  };
-};
-
-// 状态机：按产品文档流程图定义
-// scan → connecting → (wifi-guide?) → desktop → webview
-// 任意步骤失败 → connect-failed
-export type AppPhase =
-  | 'scan'          // ① 扫码界面（含启动检查历史配置）
-  | 'connecting'    // ④ 连接中（WiFi连接 + 内网校验）
-  | 'wifi-guide'   // ③ WiFi手动引导（降级兜底）
-  | 'connect-failed' // ② 失败重试
-  | 'desktop'       // ⑤ 微服务桌面
-  | 'webview';      // 内嵌浏览器

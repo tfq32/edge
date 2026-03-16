@@ -1,30 +1,26 @@
 import { create } from 'zustand';
-import type { AppItem, ConnectionRecord } from '../types';
+import type { AppItem, ConnectionRecord, QrCodeData } from '../types';
 
-/**
- * Store 只负责存共享数据，页面跳转完全交给 React Navigation。
- * 不再有 phase / goToXxx 之类的方法。
- */
 interface AppState {
   apps: AppItem[];
+  qrData: QrCodeData | null;
   record: ConnectionRecord | null;
-  notice: string | null;
 
   setApps: (apps: AppItem[]) => void;
+  setQrData: (qrData: QrCodeData) => void;
   setRecord: (record: ConnectionRecord | null) => void;
-  setNotice: (notice: string | null) => void;
   reset: () => void;
 }
 
 export const useAppStore = create<AppState>(set => ({
   apps: [],
   record: null,
-  notice: null,
+  qrData: null,
 
   setApps: apps => set({ apps }),
+  setQrData: qrData => set({ qrData }),
   setRecord: record => set({ record }),
-  setNotice: notice => set({ notice }),
 
   // 重置到初始状态（重新扫码时调用）
-  reset: () => set({ apps: [], record: null, notice: null }),
+  reset: () => set({ apps: [], qrData: null, record: null }),
 }));

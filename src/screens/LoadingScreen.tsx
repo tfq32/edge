@@ -1,20 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
-
 import type { LoadingScreenProps } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useAppStore } from '../store/appStore';
-import { inferGatewayIp, fetchAppListWithFallback, healthCheck } from '../services/gateway';
+import { fetchAppList, healthCheck } from '../services/gateway';
+import { getGatewayIpAddress } from '../utils/wifi';
 
 const STEPS = [
-  { key: 'parse',    label: '解析配置信息',   sub: 'Parse QR config' },
-  { key: 'wifi',     label: '连接目标 WiFi',  sub: 'Connect to SSID' },
-  { key: 'intranet', label: '校验内网可达性', sub: 'Verify intranet access' },
-  { key: 'load',     label: '加载微服务列表', sub: 'Loading service list' },
+  { key: 'parse', label: '解析配置信息', sub: 'Parse QR config' },
+  { key: 'wifi', label: '连接目标 WiFi', sub: 'Connect to SSID' },
+  { key: 'intranet', label: '校验内网服务可达性', sub: 'Verify intranet access' },
+  { key: 'load', label: '加载微服务列表', sub: 'Loading service list' },
 ];
 
 export function LoadingScreen({ navigation }: LoadingScreenProps) {
-  const { record, setApps } = useAppStore();
+  const { record, setRecord, setApps } = useAppStore();
   const [stepIndex, setStepIndex] = useState(0);
   const spinAnim = useRef(new Animated.Value(0)).current;
 
@@ -33,17 +33,31 @@ export function LoadingScreen({ navigation }: LoadingScreenProps) {
   // 主流程
   useEffect(() => {
     const run = async () => {
+      const startTime = Date.now();
       if (!record) {
         navigation.replace('Error', { message: '连接记录丢失，请重新扫码', code: 'NO_RECORD' });
         return;
       }
 
       setStepIndex(2); // 校验内网
-      const gatewayIp = record.gatewayIp || inferGatewayIp();
-      const reachable = await healthCheck(gatewayIp);
+      let gatewayIp = record.gatewayIp;
+      let gatewayPort = record.gatewayPort;
+      if (!gatewayIp || !gatewayPort) {
+        gatewayIp = await getGatewayIpAddress();
+        if (!gatewayIp) {
+          navigation.replace('Error', {
+            message: '无法获取内网 IP，请检查 WiFi 连接',
+            code: 'NO_GATEWAY_IP',
+          });
+          return;
+        }
+        gatewayPort = 80
+        setRecord({...record, gatewayIp, gatewayPort})
+      }
+      const reachable = await healthCheck(gatewayIp, gatewayPort);
       if (!reachable) {
         navigation.replace('Error', {
-          message: `内网不可达 (${gatewayIp})，请检查 WiFi 连接`,
+          message: `内网服务不可访问 (${gatewayIp})，请检查WiFi连接和服务状态`,
           code: 'INTRANET_UNREACHABLE',
         });
         return;
@@ -51,8 +65,12 @@ export function LoadingScreen({ navigation }: LoadingScreenProps) {
 
       setStepIndex(3); // 加载列表
       try {
-        const list = await fetchAppListWithFallback(gatewayIp);
+        const list = await fetchAppList(gatewayIp, gatewayPort);
         setApps(list);
+        const elapsed = Date.now() - startTime;
+        if (elapsed < 2000) {
+          await new Promise<void>(res => setTimeout(res, 2000 - elapsed));
+        }
         // replace：成功后不能从桌面返回到 Loading
         navigation.replace('Desktop');
       } catch (err) {
@@ -64,9 +82,7 @@ export function LoadingScreen({ navigation }: LoadingScreenProps) {
     };
 
     void run();
-  // navigation / setApps 是稳定引用，不会重复触发
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+   }, []);
 
   const progress = Math.round(((stepIndex + 1) / STEPS.length) * 100);
   const activeStep = STEPS[stepIndex];
@@ -87,15 +103,15 @@ export function LoadingScreen({ navigation }: LoadingScreenProps) {
       {/* 步骤列表 */}
       <View style={styles.stepsList}>
         {STEPS.map((step, i) => {
-          const done    = i < stepIndex;
-          const active  = i === stepIndex;
+          const done = i < stepIndex;
+          const active = i === stepIndex;
           const pending = i > stepIndex;
           return (
             <View key={step.key} style={[styles.stepRow, pending && styles.stepPending]}>
               <View style={[styles.dot, done && styles.dotDone, active && styles.dotActive]}>
-                {done   ? <Text style={styles.check}>✓</Text>
-                : active ? <Animated.View style={[styles.spinner, { transform: [{ rotate: spin }] }]} />
-                :          <Text style={styles.circle}>○</Text>}
+                {done ? <Text style={styles.check}>✓</Text>
+                  : active ? <Animated.View style={[styles.spinner, { transform: [{ rotate: spin }] }]} />
+                    : <Text style={styles.circle}>○</Text>}
               </View>
               <View>
                 <Text style={[styles.stepLabel, done && styles.stepLabelDone, active && styles.stepLabelActive]}>

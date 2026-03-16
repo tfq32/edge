@@ -1,16 +1,36 @@
 import type { WifiSecurity } from '../types';
+import WifiManager from 'react-native-wifi-reborn';
+import { NativeModules } from 'react-native';
+const { WifiGateway } = NativeModules;
 
 function unescapeWifiValue(value: string): string {
   return value.replace(/\\([;,:\\"])/g, '$1');
 }
 
-export function parseWifiQr(raw: string) {
-  const text = raw.trim();
-  if (!text.startsWith('WIFI:')) {
-    throw new Error('二维码不是有效的 WiFi 格式');
+export function parseQr(raw: string) {
+  const text = raw.trim()
+  if (text.startsWith('WIFI:')) {
+    // wifi二维码
+    console.log('wifi二维码：', text)
+    return {
+      wifi: parseWifiQr(text)
+    }
+  } else {
+    const {wifi, server} = JSON.parse(text)
+    console.log('自定义二维码：', wifi, server)
+    return {
+      wifi: {
+        security: "WPA",
+        hidden: false,
+        ...wifi,
+      },
+      server
+    }
   }
+}
 
-  const body = text.slice(5);
+function parseWifiQr(raw: string) {
+  const body = raw.slice(5);
   const result: Record<string, string> = {};
   let current = '';
   let escaped = false;
@@ -41,4 +61,27 @@ export function parseWifiQr(raw: string) {
     security,
     hidden: result.H === 'true',
   };
+}
+
+/** 根据当前 WiFi IP 推算网关 IP（取 .1） */
+async function inferGatewayIp(): Promise<string> {
+  console.warn('Using fallback gateway IP inference');
+  const deviceIp = await WifiManager.getIP();
+  if (deviceIp) {
+    const parts = deviceIp.split('.');
+    if (parts.length === 4) {
+      parts[3] = '1';
+      return parts.join('.');
+    }
+  }
+  return '';
+}
+
+export async function getGatewayIpAddress(): Promise<string> {
+  try {
+    return await WifiGateway.getGatewayIpAddress();
+  } catch (error) {
+    console.error('Error fetching gateway IP:', error);
+    return inferGatewayIp()
+  }
 }

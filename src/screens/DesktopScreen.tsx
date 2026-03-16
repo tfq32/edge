@@ -3,6 +3,7 @@ import {
   FlatList,
   Image,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -14,13 +15,7 @@ import { colors } from '../theme/colors';
 import { useAppStore } from '../store/appStore';
 import { getDeviceLayout } from '../utils/device';
 import type { AppItem } from '../types';
-
-const NAV_ITEMS = [
-  { key: 'home', icon: '🏠', label: '首页' },
-  { key: 'connect', icon: '🔗', label: '连接' },
-  { key: 'data', icon: '📊', label: '数据' },
-  { key: 'mine', icon: '👤', label: '我的' },
-];
+import { fetchAppList } from '../services/gateway';
 
 const ICON_COLORS = [
   '#5B5CFF', '#8B5CF6', '#14B8FF', '#F59E0B',
@@ -35,9 +30,26 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function DesktopScreen({ navigation }: DesktopScreenProps) {
-  const { apps, record } = useAppStore();
+  const { apps, record, setApps } = useAppStore();
   const { isTablet, columns } = getDeviceLayout();
   const [keyword, setKeyword] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+
+  // 刷新方法
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      // 静态导入，确保调用
+      const gatewayIp = record?.gatewayIp!;
+      const gatewayPort = record?.gatewayPort!;
+      const list = await fetchAppList(gatewayIp, gatewayPort);
+      setApps(list);
+    } catch (err) {
+      console.warn('刷新失败:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const filtered = useMemo(
     () => apps.filter(a => a.name.toLowerCase().includes(keyword.toLowerCase())),
@@ -58,8 +70,8 @@ export function DesktopScreen({ navigation }: DesktopScreenProps) {
 
   const renderItem = ({ item, index }: { item: AppItem; index: number }) => {
     const isStopped = item.status === 'stopped';
-    const showDot   = item.status === 'warning' || item.status === 'stopped';
-    const dotColor  = STATUS_COLOR[item.status ?? 'running'] ?? colors.success;
+    const showDot = item.status === 'warning' || item.status === 'stopped';
+    const dotColor = STATUS_COLOR[item.status ?? 'running'] ?? colors.success;
 
     return (
       <Pressable
@@ -108,8 +120,8 @@ export function DesktopScreen({ navigation }: DesktopScreenProps) {
       <View style={[styles.statusBar, isTablet && styles.statusBarTablet]}>
         {[
           { color: colors.success, label: '运行中', count: statusCounts.running },
-          { color: colors.warning, label: '异常',   count: statusCounts.warning },
-          { color: colors.danger,  label: '停止',   count: statusCounts.stopped },
+          // { color: colors.warning, label: '异常', count: statusCounts.warning },
+          { color: colors.danger, label: '停止', count: statusCounts.stopped },
         ].map(({ color, label, count }) => (
           <View key={label} style={[styles.chip, { borderColor: `${color}30`, backgroundColor: `${color}0f` }]}>
             <View style={[styles.chipDot, { backgroundColor: color }]} />
@@ -133,19 +145,15 @@ export function DesktopScreen({ navigation }: DesktopScreenProps) {
             {keyword ? '未找到匹配的微应用' : '正在加载微服务...'}
           </Text>
         }
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
       />
-
-      {/* Bottom nav */}
-      <View style={[styles.bottomNav, isTablet && styles.bottomNavTablet]}>
-        {NAV_ITEMS.map((item, i) => (
-          <View key={item.key} style={styles.navItem}>
-            <View style={[styles.navIconWrap, i === 0 && styles.navIconActive]}>
-              <Text style={styles.navIcon}>{item.icon}</Text>
-            </View>
-            <Text style={[styles.navLabel, i === 0 && styles.navLabelActive]}>{item.label}</Text>
-          </View>
-        ))}
-      </View>
     </View>
   );
 }
@@ -160,8 +168,8 @@ const styles = StyleSheet.create({
   avatarIcon: { fontSize: 14 },
   searchWrap: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 20, marginBottom: 12, height: 36, borderRadius: 20, backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, gap: 6 },
   searchWrapTablet: { marginHorizontal: 36 },
-  searchIcon: { fontSize: 13, color: colors.mutedText },
-  searchInput: { flex: 1, color: colors.text, fontSize: 13 },
+  searchIcon: { fontSize: 14, color: colors.mutedText },
+  searchInput: { flex: 1, color: colors.text, fontSize: 12 },
   statusBar: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, marginBottom: 14 },
   statusBarTablet: { paddingHorizontal: 36 },
   chip: { flex: 1, height: 28, borderRadius: 6, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
@@ -181,12 +189,4 @@ const styles = StyleSheet.create({
   appName: { color: colors.subText, fontSize: 11, textAlign: 'center', lineHeight: 15 },
   appNameStopped: { color: colors.mutedText },
   empty: { color: colors.mutedText, textAlign: 'center', marginTop: 60, fontSize: 14 },
-  bottomNav: { position: 'absolute', left: 20, right: 20, bottom: 20, height: 68, borderRadius: 20, backgroundColor: colors.bgCardStrong, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
-  bottomNavTablet: { left: 48, right: 48 },
-  navItem: { alignItems: 'center', gap: 2 },
-  navIconWrap: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  navIconActive: { backgroundColor: colors.primary },
-  navIcon: { fontSize: 18 },
-  navLabel: { color: colors.mutedText, fontSize: 11 },
-  navLabelActive: { color: colors.text },
 });
