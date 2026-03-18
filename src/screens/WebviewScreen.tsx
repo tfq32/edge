@@ -1,31 +1,29 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { BackHandler, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 
 import type { WebviewScreenProps } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { DraggableButton } from '../components/DraggableButton';
+import { useFocusEffect } from '@react-navigation/native';
 
 export function WebviewScreen({ navigation, route }: WebviewScreenProps) {
   const { url } = route.params;
-  const webviewRef = useRef(null);
+  const webviewRef = useRef<WebView>(null);
   const [canGoBack, setCanGoBack] = useState(false);
 
-  // 拦截物理返回和手势
-  useEffect(() => {
-    const handler = (e: any) => {
-      if (canGoBack && webviewRef.current) {
-        e.preventDefault();
-        // @ts-ignore
-        webviewRef.current.goBack();
-      }
-    };
-    navigation.addListener('beforeRemove', handler);
-    return () => {
-      navigation.removeListener('beforeRemove', handler);
-    };
-  }, [canGoBack, navigation]);
+    // Android 物理返回键（RN 0.83+ 用 subscription.remove()）
+  useFocusEffect(
+    React.useCallback(() => {
+      const handler = () => {
+        if (canGoBack) { webviewRef.current?.goBack(); return true; }
+        navigation.goBack(); return true;
+      };
+      const subscription = BackHandler.addEventListener('hardwareBackPress', handler);
+      return () => subscription.remove();
+    }, [canGoBack, navigation])
+  );
 
   return (
     <View style={styles.container}>
@@ -38,9 +36,8 @@ export function WebviewScreen({ navigation, route }: WebviewScreenProps) {
           domStorageEnabled
           onNavigationStateChange={nav => setCanGoBack(nav.canGoBack)}
         />
-        {/* 悬浮拖拽返回按钮，goBack() 回到 Desktop */}
-        <DraggableButton onPress={() => {
-          // setCanGoBack(false); // 确保可以返回
+        {/* 悬浮拖拽返回按钮 */}
+        <DraggableButton onPress={() => {          
           navigation.goBack();
         }} />
       </SafeAreaView>

@@ -3,10 +3,11 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from './types';
-import { ScanScreen } from '../screens/ScanScreen';
+import { InitScreen }    from '../screens/InitScreen';
+import { ScanScreen }    from '../screens/ScanScreen';
 import { LoadingScreen } from '../screens/LoadingScreen';
-import { WifiGuide } from '../screens/WifiGuide';
-import { ErrorScreen } from '../screens/ErrorScreen';
+import { WifiGuide }     from '../screens/WifiGuide';
+import { ErrorScreen }   from '../screens/ErrorScreen';
 import { DesktopScreen } from '../screens/DesktopScreen';
 import { WebviewScreen } from '../screens/WebviewScreen';
 
@@ -16,19 +17,33 @@ export function RootNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName="Scan"
+        initialRouteName="Init"
         screenOptions={{
-          headerShown: false,         // 全部自定义 header
-          animation: 'slide_from_right',
-          contentStyle: { backgroundColor: '#070b14' },
+          headerShown: false,
+          animation: 'fade',
+          contentStyle: { backgroundColor: '#03051a' },
         }}
       >
-        <Stack.Screen name="Scan" component={ScanScreen} />
-        <Stack.Screen name="Loading" component={LoadingScreen} />
+        {/* 首页 — 点击扫码连接才进入扫码 */}
+        <Stack.Screen
+          name="Init"
+          component={InitScreen}
+          options={{ animation: 'none' }}
+        />
+        <Stack.Screen
+          name="Scan"
+          component={ScanScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="Loading"
+          component={LoadingScreen}
+          options={{ animation: 'fade' }}
+        />
         <Stack.Screen
           name="WifiGuide"
           component={WifiGuide}
-          options={{ animation: 'slide_from_bottom' }}  // 从底部弹出，像抽屉
+          options={{ animation: 'slide_from_bottom' }}
         />
         <Stack.Screen
           name="Error"
@@ -39,8 +54,8 @@ export function RootNavigator() {
           name="Desktop"
           component={DesktopScreen}
           options={{
-            // animation: 'fade',
-            gestureEnabled: false,  // 桌面页禁止右滑返回
+            animation: 'fade',
+            gestureEnabled: false,
           }}
         />
         <Stack.Screen
