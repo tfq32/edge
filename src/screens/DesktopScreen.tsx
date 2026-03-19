@@ -1,27 +1,22 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
-  Animated,
-  FlatList,
-  Image,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+  Animated, Dimensions, FlatList, Image, Modal, Pressable,
+  RefreshControl, StyleSheet, Text, View,
 } from 'react-native';
-
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { DesktopScreenProps } from '../navigation/types';
-import { Dimensions } from 'react-native';
 import { colors } from '../theme/colors';
-
-const { width: _SW, height: _SH } = Dimensions.get('window');
-const isTablet = Math.min(_SW, _SH) >= 768;
 import { AppIcon } from '../components/AppIcon';
 import { useAppStore } from '../store/appStore';
 import { getDeviceLayout } from '../utils/device';
 import type { AppItem } from '../types';
 import { fetchAppList } from '../services/gateway';
+
+const yihuiPng = require('../assets/yihui.png')
+
+const { width: _SW, height: _SH } = Dimensions.get('window');
+const isTablet = Math.min(_SW, _SH) >= 768;
+const APP_VERSION = '1.0.0';
 
 const STATUS_COLOR: Record<string, string> = {
   running: colors.success,
@@ -29,29 +24,65 @@ const STATUS_COLOR: Record<string, string> = {
   warning: colors.warning,
 };
 
+/** 独立的 App 网格项组件 */
+function AppGridItem({ item, isTabletLayout, onPress }: {
+  item: AppItem;
+  isTabletLayout: boolean;
+  onPress: (item: AppItem) => void;
+}) {
+  const isStopped = item.status === 'stopped';
+  const showDot   = item.status === 'warning';
+  const dotColor  = STATUS_COLOR[item.status ?? 'running'] ?? colors.success;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const onPressIn  = () => Animated.spring(scaleAnim, { toValue: 0.88, useNativeDriver: true, speed: 40, bounciness: 0 }).start();
+  const onPressOut = () => Animated.spring(scaleAnim, { toValue: 1,    useNativeDriver: true, speed: 20, bounciness: 10 }).start();
+
+  return (
+    <Pressable
+      style={[S.cell, isTabletLayout && S.cellTablet, isStopped && S.cellStopped]}
+      onPress={() => onPress(item)}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+    >
+      {showDot && <View style={[S.statusDot, { backgroundColor: dotColor }]} />}
+      <Animated.View style={[S.iconWrap, isTabletLayout && S.iconWrapTablet, { transform: [{ scale: scaleAnim }] }]}>
+        {(item.icon?.startsWith('http') || item.icon?.startsWith('data:')) ? (
+          <Image source={{ uri: item.icon }} style={[S.iconImg, isTabletLayout && S.iconImgTablet]} resizeMode="cover"/>
+        ) : (
+          <Text style={[S.iconEmoji, isTabletLayout && S.iconEmojiTablet]}>{item.icon || '🧩'}</Text>
+        )}
+        {isStopped && (
+          <View style={S.unavailMask}>
+            <Text style={S.unavailIcon}>⊘</Text>
+          </View>
+        )}
+      </Animated.View>
+      <Text numberOfLines={2} style={[S.appName, isStopped && S.appNameStopped]}>{item.name}</Text>
+    </Pressable>
+  );
+}
+
+/** 下拉菜单项 */
+type MenuItem = { icon: string; label: string; value?: string; onPress?: () => void };
+
 export function DesktopScreen({ navigation }: DesktopScreenProps) {
+  const insets = useSafeAreaInsets();
   const { apps, record, setApps } = useAppStore();
-  const { isTablet, columns } = getDeviceLayout();
-  const [keyword, setKeyword] = useState('');
+  const { isTablet: IT, columns } = getDeviceLayout();
   const [refreshing, setRefreshing] = useState(false);
-  const [toastMsg, setToastMsg] = useState('');
+  const [toastMsg, setToastMsg]     = useState('');
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [sortAZ, setSortAZ] = useState(false);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
       const list = await fetchAppList(record?.gatewayIp!, record?.gatewayPort!);
       setApps(list);
-    } catch (err) {
-      console.warn('刷新失败:', err);
-    } finally {
-      setRefreshing(false);
-    }
+    } catch (err) { console.warn('刷新失败:', err); }
+    finally { setRefreshing(false); }
   };
-
-  const filtered = useMemo(
-    () => apps.filter(a => a.name.toLowerCase().includes(keyword.toLowerCase())),
-    [apps, keyword],
-  );
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -59,373 +90,274 @@ export function DesktopScreen({ navigation }: DesktopScreenProps) {
   };
 
   const handlePressApp = (item: AppItem) => {
-    if (item.status === 'stopped') {
-      showToast('服务未启动，请联系管理员');
-      return;
-    }
+    if (item.status === 'stopped') { showToast('服务未启动，请联系管理员'); return; }
     navigation.navigate('Webview', { url: item.url, title: item.name });
   };
 
-  const renderItem = ({ item, index }: { item: AppItem; index: number }) => {
-    const isStopped = item.status === 'stopped';
-    const showDot = item.status === 'warning';
-    const dotColor = STATUS_COLOR[item.status ?? 'running'] ?? colors.success;
-    const scaleAnim = new Animated.Value(1);
+  const handleToggleSort = useCallback(() => {
+    setSortAZ(prev => !prev);
+    setMenuVisible(false);
+  }, [sortAZ]);
 
-    const onPressIn = () => Animated.spring(scaleAnim, {
-      toValue: 0.88, useNativeDriver: true, speed: 40, bounciness: 0,
-    }).start();
+  // 状态排序权重：running/warning 在前，stopped 在后
+  const statusOrder = (s?: string) => s === 'stopped' ? 1 : 0;
 
-    const onPressOut = () => Animated.spring(scaleAnim, {
-      toValue: 1, useNativeDriver: true, speed: 20, bounciness: 10,
-    }).start();
+  // 排序后的 apps：默认按状态排（运行中在前），可切换为名称排序
+  const sortedApps = sortAZ
+    ? [...apps].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans'))
+    : [...apps].sort((a, b) => statusOrder(a.status) - statusOrder(b.status));
 
-    return (
-      <Pressable
-        style={[styles.cell, isTablet && styles.cellTablet, isStopped && styles.cellStopped]}
-        onPress={() => handlePressApp(item)}
-        onPressIn={onPressIn}
-        onPressOut={onPressOut}
-      >
-        {showDot && (
-          <View style={[styles.statusDot, { backgroundColor: dotColor }]} />
-        )}
+  const menuItems: MenuItem[] = [
+    {
+      icon: '',
+      label: '网络连接',
+      value: record?.ssid ?? '未连接',
+    },
+    {
+      icon: '',
+      label: '服务地址',
+      value: record?.gatewayIp ?? '未知',
+    },
+    {
+      icon: '',
+      label: '排序方式',
+      value: sortAZ ? '名称' : '默认',
+      onPress: handleToggleSort,
+    },
+    {
+      icon: '',
+      label: '版本',
+      value: `v${APP_VERSION}`,
+    },
+  ];
 
-        <Animated.View style={[styles.iconWrap, isTablet && styles.iconWrapTablet, { transform: [{ scale: scaleAnim }] }]}>
-          {/* 立体底层阴影 */}
-          <View style={[styles.iconShadow, isTablet && styles.iconShadowTablet]} />
-          {/* 主体圆角背景 */}
-          <View style={[styles.iconBg, isTablet && styles.iconBgTablet]}>
-            {/* 顶部高光 */}
-            <View style={styles.iconHighlight} />
-            {(item.icon?.startsWith('http') || item.icon?.startsWith('data:')) ? (
-              <Image
-                source={{ uri: item.icon }}
-                style={[styles.iconImg, isTablet && styles.iconImgTablet]}
-                resizeMode="contain"
-              />
-            ) : (
-              <View style={[styles.iconInner, isTablet && styles.iconInnerTablet]}>
-                <Text style={[styles.iconEmoji, isTablet && styles.iconEmojiTablet]}>
-                  {item.icon || '🧩'}
-                </Text>
-              </View>
-            )}
-          </View>
-        </Animated.View>
-
-        <Text numberOfLines={2} style={[styles.appName, isStopped && styles.appNameStopped]}>
-          {item.name}
-        </Text>
-      </Pressable>
-    );
-  };
+  const renderItem = ({ item }: { item: AppItem }) => (
+    <AppGridItem item={item} isTabletLayout={IT} onPress={handlePressApp} />
+  );
 
   return (
-    <View style={styles.container}>
-      {/* 顶部 Toast 提示 */}
+    <View style={S.container}>
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <View style={S.blobL} /><View style={S.blobR} />
+      </View>
+
+      {/* Toast */}
       {!!toastMsg && (
-        <View style={styles.toast} pointerEvents="none">
+        <View style={S.toast} pointerEvents="none">
           <Text style={{ fontSize: 16 }}>⚠️</Text>
-          <Text style={styles.toastText}>{toastMsg}</Text>
+          <Text style={S.toastText}>{toastMsg}</Text>
         </View>
       )}
-      {/* 柔和多色渐变背景层 */}
-      {/* 渐变色背景层 */}
-      <View style={styles.gradLayer1} />
-      <View style={styles.gradLayer2} />
-      <View style={styles.gradLayer3} />
-      {/* Top bar */}
-      <View style={[styles.topBar, isTablet && styles.topBarTablet]}>
-        <View style={styles.topBarLeft}>
-          {/* App icon placeholder (replace with actual icon if available) */}
-          <View style={styles.appIconWrap}>
-            <AppIcon size={26} />
+
+      {/* 安全区占位 */}
+      <View style={{ height: insets.top, backgroundColor: colors.bg }} />
+
+      {/* 顶栏 */}
+      <View style={[S.topBar, IT && S.topBarTablet]}>
+        <View style={S.topBarLeft}>
+          <View style={S.appIconWrap}>
+            <AppIcon source={yihuiPng} size={IT ? 30 : 26} />
           </View>
           <View>
-            <Text style={styles.title}>微应用桌面</Text>
-            <Text style={styles.subtitle}>
-              {record?.ssid ?? '--'}  ·  {record?.gatewayIp ?? '--'}  ·  ONLINE
-            </Text>
+            <Text style={S.title}>微应用桌面</Text>
+            <Text style={S.subtitle}>IEC2000</Text>
           </View>
         </View>
-        <View style={styles.topBarRight}>
-          <View style={styles.onlineDot} />
-          <View style={styles.avatar}>
-            <Text style={styles.avatarIcon}>👤</Text>
+        {/* ··· 更多按钮 */}
+        <Pressable
+          style={S.moreBtn}
+          onPress={() => setMenuVisible(true)}
+          hitSlop={14}
+        >
+          <Text style={S.moreDots}>···</Text>
+        </Pressable>
+      </View>
+
+      {/* 下拉菜单 */}
+      <Modal
+        visible={menuVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setMenuVisible(false)}
+      >
+        <Pressable style={S.menuOverlay} onPress={() => setMenuVisible(false)}>
+          <View style={[S.menuCard, { top: insets.top + 56, right: 16 }, IT && { right: 24 }]}>
+            {menuItems.map((item, i) => (
+              <Pressable
+                key={i}
+                style={({ pressed }) => [
+                  S.menuItem,
+                  i < menuItems.length - 1 && S.menuItemBorder,
+                  pressed && item.onPress ? { backgroundColor: 'rgba(66,170,245,0.06)' } : {},
+                ]}
+                onPress={item.onPress}
+                disabled={!item.onPress}
+              >
+                <Text style={S.menuLabel}>{item.label}</Text>
+                {item.value ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+                    <Text style={S.menuValue}>{item.value}</Text>
+                    {item.onPress && <Text style={[S.menuArrow, { lineHeight: isTablet ? 16 : 14 }]}>›</Text>}
+                  </View>
+                ) : (
+                  <Text style={S.menuArrow}>›</Text>
+                )}
+              </Pressable>
+            ))}
           </View>
-        </View>
-      </View>
+        </Pressable>
+      </Modal>
 
-      {/* Search bar */}
-      <View style={[styles.searchWrap, isTablet && styles.searchWrapTablet]}>
-        <Text style={styles.searchIcon}>🔍</Text>
-        <TextInput
-          value={keyword}
-          onChangeText={setKeyword}
-          placeholder="搜索微应用..."
-          placeholderTextColor={colors.placeholder}
-          style={styles.searchInput}
-        />
-      </View>
-
-      {/* App grid — 无 tab 标签，直接宫格 */}
+      {/* 宫格 */}
       <FlatList
-        data={filtered}
+        data={sortedApps}
         key={`grid-${columns}`}
         numColumns={columns}
-        contentContainerStyle={[styles.grid, isTablet && styles.gridTablet]}
-        columnWrapperStyle={styles.row}
+        contentContainerStyle={[S.grid, IT && S.gridTablet]}
+        columnWrapperStyle={S.row}
         keyExtractor={(item, i) => `${item.type}-${item.name}-${i}`}
         renderItem={renderItem}
-        ListEmptyComponent={
-          <Text style={styles.empty}>
-            {keyword ? '未找到匹配的微应用' : '正在加载微应用...'}
-          </Text>
-        }
+        ListEmptyComponent={<Text style={S.empty}>正在加载微应用...</Text>}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[colors.primary]} tintColor={colors.primary}/>
         }
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  // 渐变背景层：三个斜向柔和色带叠加，形成非单一背景色
+const S = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
+  blobL: { position: 'absolute', bottom: '-18%', left: '-18%', width: _SH * 0.52, height: _SH * 0.52, borderRadius: _SH * 0.26, backgroundColor: 'rgba(66,170,245,0.12)' },
+  blobR: { position: 'absolute', bottom: '-22%', right: '-22%', width: _SH * 0.46, height: _SH * 0.46, borderRadius: _SH * 0.23, backgroundColor: 'rgba(66,170,245,0.16)' },
+
   toast: {
     position: 'absolute',
-    top: 64,
-    left: 20,
-    right: 20,
-    backgroundColor: 'rgba(40,28,8,0.96)',
+    top: 56,
+    left: 16,
+    right: 16,
+    backgroundColor: 'rgba(255,251,235,0.97)',
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.55)',
+    borderColor: 'rgba(245,158,11,0.35)',
     borderLeftWidth: 3,
-    borderLeftColor: '#f59e0b',
-    borderRadius: 8,
+    borderLeftColor: colors.warning,
+    borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     zIndex: 999,
+    elevation: 8,
+    shadowColor: 'rgba(245,158,11,0.12)',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 16,
   },
-  toastText: {
-    color: '#fcd34d',
-    fontSize: 13,
-    fontWeight: '600',
-    flex: 1,
-  },
-  // 顶部暗、底部蓝的渐变层
-  gradLayer1: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    height: '50%',
-    backgroundColor: 'rgba(6,9,42,0.45)',   // 顶部深暗遮罩（稍浅）
-    borderBottomLeftRadius: 999,
-    borderBottomRightRadius: 999,
-    transform: [{ scaleX: 1.6 }],
-    zIndex: 0,
-  },
-  gradLayer2: {
-    position: 'absolute',
-    bottom: 0, left: 0, right: 0,
-    height: '55%',
-    backgroundColor: 'rgba(14,20,100,0.45)', // 底部蓝色光晕
-    borderTopLeftRadius: 999,
-    borderTopRightRadius: 999,
-    transform: [{ scaleX: 1.4 }],
-    zIndex: 0,
-  },
-  gradLayer3: {
-    position: 'absolute',
-    bottom: '-10%',
-    alignSelf: 'center',
-    left: '10%',
-    right: '10%',
-    height: '35%',
-    backgroundColor: 'rgba(30,33,247,0.12)', // 底部主色蓝强化
-    borderRadius: 999,
-    zIndex: 0,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#04072a',
-  },
+  toastText: { color: '#92400e', fontSize: 14, fontWeight: '600', flex: 1 },
 
-  // Top bar
   topBar: {
-    paddingHorizontal: 20,
-    paddingTop: 52,
-    paddingBottom: 12,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSubtle,
-    backgroundColor: 'rgba(8,12,60,0.85)',
+    position: 'relative',
+    zIndex: 5,
   },
-  topBarTablet: { paddingHorizontal: 48, paddingTop: 28 },
+  topBarTablet: { paddingHorizontal: 24 },
   topBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   appIconWrap: {
-    width: isTablet ? 44 : 34,
-    height: isTablet ? 44 : 34,
-    borderRadius: isTablet ? 10 : 8,
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
+    width: isTablet ? 44 : 38,
+    height: isTablet ? 44 : 38,
+    borderRadius: isTablet ? 12 : 10,
+    backgroundColor: colors.bgWhite,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  title: {
-    color: colors.text,
-    fontSize: isTablet ? 20 : 16,
-    fontWeight: '900',
-    letterSpacing: 0.3,
-  },
-  subtitle: {
-    color: colors.primaryLight,
-    fontSize: isTablet ? 11 : 9,
-    marginTop: 2,
-    letterSpacing: 0.5,
-  },
-  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  onlineDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.success,
-    // elevation alone won't glow, but keeps Android consistent
     elevation: 2,
+    shadowColor: 'rgba(66,170,245,0.12)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
   },
-  avatar: {
-    width: isTablet ? 44 : 34,
-    height: isTablet ? 44 : 34,
-    borderRadius: isTablet ? 10 : 8,
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
+  title: { color: colors.text, fontSize: isTablet ? 20 : 16, fontWeight: '800' },
+  subtitle: { color: colors.mutedText, fontSize: isTablet ? 12 : 10, marginTop: 1 },
+
+  // ··· 按钮（无白底，紧凑）
+  moreBtn: {
+    width: isTablet ? 36 : 30,
+    height: isTablet ? 36 : 30,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarIcon: { fontSize: 14 },
+  moreDots: {
+    fontSize: isTablet ? 18 : 15,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: 1,
+    marginTop: -3,
+  },
 
-  // Search
-  searchWrap: {
+  // 下拉菜单
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+  },
+  menuCard: {
+    position: 'absolute',
+    width: isTablet ? 280 : 240,
+    backgroundColor: colors.bgWhite,
+    borderRadius: 16,
+    paddingVertical: 6,
+    elevation: 12,
+    shadowColor: 'rgba(0,0,0,0.15)',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 24,
+  },
+  menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 20,
-    marginTop: 10,
-    marginBottom: 14,
-    height: isTablet ? 44 : 36,
-    borderRadius: 6,
-    backgroundColor: 'rgba(30,33,247,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(30,33,247,0.45)',
-    paddingHorizontal: 12,
-    gap: 7,
-  },
-  searchWrapTablet: { marginHorizontal: 32 },
-  searchIcon: { fontSize: 13, opacity: 0.8 },
-  searchInput: {
-    flex: 1,
-    color: '#ffffff',
-    fontSize: 13,
-    padding: 0,
-  },
-
-  // Grid
-  grid: {
+    paddingVertical: 13,
     paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 120,
+    gap: 0,
   },
-  gridTablet: { paddingHorizontal: 28 },
-  row: { marginBottom: 24 },
+  menuItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(66,170,245,0.08)',
+  },
+  menuLabel: { color: colors.text, fontSize: isTablet ? 15 : 14, fontWeight: '500', flex: 1 },
+  menuValue: { color: colors.mutedText, fontSize: isTablet ? 13 : 12 },
+  menuArrow: { color: colors.mutedText, fontSize: 18, fontWeight: '600' },
 
-  // Cell — iOS launcher style: no box, pure icon + label
-  cell: {
-    width: '25%',
-    alignItems: 'center',
-    paddingVertical: 2,
-    position: 'relative',
-  },
-  cellTablet: {
-    // tablet 8列，保持紧凑
-  },
-  cellStopped: { opacity: 0.55 },  // 停止状态更可见，点击时提示
-
-  // Status dot badge
+  grid: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 120 },
+  gridTablet: { paddingHorizontal: 24 },
+  row: { marginBottom: 20 },
+  cell: { width: '25%', alignItems: 'center', paddingVertical: 5, position: 'relative' },
+  cellTablet: {},
+  cellStopped: { opacity: 0.4 },
   statusDot: {
     position: 'absolute',
-    top: 0,
-    right: '12%',
+    top: -2,
+    right: '10%',
     width: 9,
     height: 9,
     borderRadius: 5,
-    borderWidth: 1.5,
+    borderWidth: 2,
     borderColor: colors.bg,
     zIndex: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.4,
-    shadowRadius: 2,
-    elevation: 3,
   },
-
-  // 停止状态遮罩
-  unavailableMask: {
-    position: 'absolute',
-    inset: 0,
-    top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(3,5,26,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  unavailableIcon: {
-    fontSize: 22,
-    color: 'rgba(255,255,255,0.75)',
-    lineHeight: 26,
-  },
-  // 图标容器：圆角裁剪，直接填充图标，无背景层
-  iconWrap: {
-    width: 54,
-    height: 54,
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconWrapTablet: {
-    width: 72,
-    height: 72,
-    borderRadius: 22,
-  },
-  iconEmoji: { fontSize: 34, lineHeight: 38 },
-  iconEmojiTablet: { fontSize: 46 },
+  iconWrap: { width: 54, height: 54, borderRadius: 16, overflow: 'hidden', marginBottom: 6, alignItems: 'center', justifyContent: 'center' },
+  iconWrapTablet: { width: 60, height: 60, borderRadius: 18 },
+  iconEmoji: { fontSize: 32, lineHeight: 36 },
+  iconEmojiTablet: { fontSize: 36 },
   iconImg: { width: 54, height: 54 },
-  iconImgTablet: { width: 64, height: 64 },
-
-  // App name
-  appName: {
-    color: colors.subText,
-    fontSize: isTablet ? 13 : 11,
-    textAlign: 'center',
-    lineHeight: isTablet ? 18 : 15,
-  },
-  appNameStopped: { color: 'rgba(184,186,253,0.4)' },
-
-  empty: {
-    color: colors.mutedText,
-    textAlign: 'center',
-    marginTop: 60,
-    fontSize: 14,
-  },
+  iconImgTablet: { width: 60, height: 60 },
+  unavailMask: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.70)', alignItems: 'center', justifyContent: 'center' },
+  unavailIcon: { fontSize: 20, color: 'rgba(0,0,0,0.30)' },
+  appName: { color: colors.text, fontSize: isTablet ? 12 : 10, fontWeight: '500', textAlign: 'center', lineHeight: isTablet ? 16 : 14 },
+  appNameStopped: { color: colors.mutedText },
+  empty: { color: colors.mutedText, textAlign: 'center', marginTop: 60, fontSize: 15 },
 });

@@ -1,55 +1,49 @@
-// 色彩系统 — 与最终 UI 设计稿完全对齐（主题色 #1e21f7 科技蓝）
+// 色彩系统 v2 — 亮色主题，简约柔和（主题色 #42aaf5）
 export const colors = {
-  // ── 背景层 ──────────────────────────────────────────────────
-  bg:             '#03051a',   // 深空蓝黑（主背景）
-  bgDeep:         '#06093a',   // 深蓝（用于渐变顶部）
-  bgMid:          '#040728',   // 中深蓝
-  bgCard:         'rgba(30,33,247,0.08)',
-  bgCardStrong:   'rgba(30,33,247,0.14)',
-  bgCardDanger:   'rgba(239,68,68,0.08)',
+  // ── 背景 ───────────────────────────────────────────────────
+  bg:             '#f0f5ff',
+  bgWhite:        '#ffffff',
+  bgCard:         '#ffffff',
+  bgCardStrong:   'rgba(66,170,245,0.08)',
+  bgCardDanger:   'rgba(239,68,68,0.06)',
 
-  // ── 主色 #1e21f7 ─────────────────────────────────────────────
-  primary:        '#1e21f7',
-  primaryLight:   '#6063f9',
-  primaryLightest:'#b8bafd',
-  primaryDark:    '#1316c8',
-  primarySoft:    'rgba(30,33,247,0.14)',
-  primaryBorder:  'rgba(30,33,247,0.4)',
-
-  // ── 强调色（初始页/扫码页金黄） ─────────────────────────────
-  accent:         '#f5a623',
-  accentSoft:     'rgba(245,166,35,0.15)',
-  accentBorder:   'rgba(245,166,35,0.3)',
+  // ── 主色 #42aaf5 ─────────────────────────────────────────────
+  primary:        '#42aaf5',
+  primaryLight:   '#2196e8',
+  primaryLightest:'#a8d8f8',
+  primaryDark:    '#1a85d0',
+  primarySoft:    'rgba(66,170,245,0.10)',
+  primaryBorder:  'rgba(66,170,245,0.30)',
 
   // ── 文字 ─────────────────────────────────────────────────────
-  text:           '#d0d4ff',   // 主文字（蓝白）
-  textBright:     '#ffffff',
-  subText:        'rgba(208,212,255,0.7)',
-  mutedText:      '#b8bafd',   // 辅助注释（亮）
-  placeholder:    'rgba(96,99,249,0.5)',
+  text:           '#1a1c3a',
+  textBright:     '#1a1c3a',
+  subText:        '#5b6080',
+  mutedText:      '#9ca3af',
+  placeholder:    '#9ca3af',
 
   // ── 语义色 ──────────────────────────────────────────────────
   success:        '#10b981',
-  successSoft:    'rgba(16,185,129,0.12)',
-  successBorder:  'rgba(16,185,129,0.35)',
+  successSoft:    'rgba(16,185,129,0.10)',
+  successBorder:  'rgba(16,185,129,0.25)',
 
   warning:        '#f59e0b',
-  warningSoft:    'rgba(245,158,11,0.12)',
-  warningBorder:  'rgba(245,158,11,0.35)',
+  warningSoft:    'rgba(245,158,11,0.10)',
+  warningBorder:  'rgba(245,158,11,0.28)',
 
   danger:         '#ef4444',
-  dangerSoft:     'rgba(239,68,68,0.1)',
-  dangerBorder:   'rgba(239,68,68,0.3)',
+  dangerSoft:     'rgba(239,68,68,0.08)',
+  dangerBorder:   'rgba(239,68,68,0.22)',
 
   // ── 标签色 ──────────────────────────────────────────────────
   system:         '#8b5cf6',
   user:           '#14b8ff',
 
   // ── 边框 ────────────────────────────────────────────────────
-  border:         'rgba(30,33,247,0.25)',
-  borderStrong:   'rgba(30,33,247,0.45)',
-  borderSubtle:   'rgba(30,33,247,0.12)',
+  border:         'rgba(66,170,245,0.20)',
+  borderStrong:   'rgba(66,170,245,0.35)',
+  borderSubtle:   'rgba(66,170,245,0.12)',
 
   // ── 阴影 ────────────────────────────────────────────────────
-  shadow:         'rgba(30,33,247,0.3)',
+  shadow:         'rgba(66,170,245,0.12)',
 };

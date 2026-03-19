@@ -1,294 +1,219 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Dimensions, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CommonActions } from '@react-navigation/native';
 import WifiManager from 'react-native-wifi-reborn';
-
 import type { ErrorScreenProps } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useAppStore } from '../store/appStore';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const isTablet = Math.min(SW, SH) >= 768;
-import { HexGrid } from '../components/HexGrid';
 
 function getReasons(code?: string): string[] {
-  if (code === 'SCAN_FAILED') {
-    return ['二维码已过期或格式不正确', '光线不足或图像模糊', '扫描的不是服务器配置码'];
-  }
-  if (code === 'WIFI_NOT_CONNECTED') {
-    return ['请确认已在系统 WiFi 设置中连接目标网络', '连接后请立即返回本应用继续'];
-  }
-  return [
-    'WiFi 网络配置有误，请重新扫码',
-    '边缘服务器未开机或不在同一内网',
-    '设备系统限制了 WiFi 自动切换',
-  ];
+  if (code === 'SCAN_FAILED') return ['二维码已过期或格式不正确', '光线不足或图像模糊', '扫描的不是服务器配置码'];
+  if (code === 'WIFI_NOT_CONNECTED') return ['请确认已在系统 WiFi 设置中连接目标网络', '连接后请立即返回本应用继续'];
+  return ['WiFi 网络配置有误，请重新扫码', '边缘服务器未开机或不在同一内网', '设备系统限制了 WiFi 自动切换'];
 }
 
-const ERROR_CODES: Record<string, string> = {
-  SCAN_FAILED: 'E-001',
-  WIFI_NOT_CONNECTED: 'E-002',
-  INTRANET_UNREACHABLE: 'E-003',
-  APP_LIST_FAILED: 'E-004',
-};
-
 export function ErrorScreen({ navigation, route }: ErrorScreenProps) {
+  const insets = useSafeAreaInsets();
   const { message, code } = route.params;
   const { reset } = useAppStore();
 
-  // 连续摆动动画：用 Animated.loop + sin 曲线实现无缝循环
   const shakeAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(shakeAnim, { toValue: 5,  duration: 400, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(shakeAnim, { toValue: -5, duration: 800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(shakeAnim, { toValue: 5,  duration: 800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(shakeAnim, { toValue: -5, duration: 800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(shakeAnim, { toValue: 0,  duration: 400, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        // 停顿 2s，再重复
-        Animated.delay(2000),
-      ])
-    ).start();
+    Animated.loop(Animated.sequence([
+      Animated.delay(3000),
+      Animated.timing(shakeAnim, { toValue: -4,  duration: 60, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 4,   duration: 80, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -4,  duration: 80, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 4,   duration: 80, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -4,  duration: 80, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0,   duration: 60, useNativeDriver: true }),
+      Animated.delay(2000),
+    ])).start();
     return () => shakeAnim.stopAnimation();
   }, [shakeAnim]);
 
-
-
-  const handleRetry = async () => {
-    try {
-      await WifiManager.forceWifiUsageWithOptions(false, { noInternet: false });
-    } catch { /* ignore */ }
-    reset();
-    navigation.replace('Scan');
+  const handleGoBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'Init' }],
+        })
+      );
+    }
   };
 
-  const isScanFail = code === 'SCAN_FAILED';
+  const handleRetry = () => {
+    reset();
+    WifiManager.forceWifiUsageWithOptions(false, { noInternet: false }).catch(() => {});
+    // 重建栈 [Init, Scan]，index=1 停在 Scan，用户按返回可回 Init
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 1,
+        routes: [{ name: 'Init' }, { name: 'Scan' }],
+      })
+    );
+  };
+
   const reasons = getReasons(code);
-  const errorCode = ERROR_CODES[code ?? ''] ?? 'E-001';
 
   return (
-    <View style={styles.container}>
-      {/* 背景红色呼吸光（叠在蓝色背景上） */}
-      {/* 红色蜂窝网格 */}
-      <HexGrid color="rgba(239,68,68,0.6)" duration={2800} />
-
-      {/* Header row */}
-      <View style={styles.headerRow}>
-        <Text style={styles.header}>连接失败</Text>
-        <View style={styles.faultBadge}>
-          <View style={styles.faultDot} />
-          <Text style={styles.faultText}>FAULT</Text>
-        </View>
+    <View style={[S.container, { paddingTop: insets.top + 8 }]}>
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <View style={S.blobL} /><View style={S.blobR} />
       </View>
 
-      {/* Error icon */}
-      <Animated.View
-        style={[styles.iconWrap, { transform: [{ translateX: shakeAnim }] }]}
-      >
-        <View style={styles.iconInner}>
-          <Text style={styles.iconX}>✕</Text>
+      {/* 顶栏 */}
+      <View style={S.headerRow}>
+        <Pressable style={S.backBtn} onPress={handleGoBack} hitSlop={12}>
+          <Text style={S.backArrow}>‹</Text>
+        </Pressable>
+        <Text style={S.header}>连接失败</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
+      {/* 错误图标 */}
+      <Animated.View style={[S.iconWrap, { transform: [{ translateX: shakeAnim }] }]}>
+        <View style={S.iconCircle}>
+          <Text style={S.iconX}>✕</Text>
         </View>
-        {/* 虚线外圈 */}
-        <View style={styles.iconRingOuter} />
       </Animated.View>
 
-      {/* Title */}
-      <Text style={styles.title}>{isScanFail ? '扫码识别失败' : '连接失败'}</Text>
-      <Text style={styles.titleEn}>
-        {isScanFail ? 'QR CODE RECOGNITION FAILED' : 'CONNECTION FAILED'}
-      </Text>
+      <Text style={S.title}>连接失败</Text>
+      <Text style={S.subtitle}>无法访问内网服务</Text>
 
-      {/* Error card */}
-      <View style={styles.errorCard}>
-        <View style={styles.errorCardTopLine} />
-        <Text style={styles.errorCode}>[ {errorCode} ]  {code ?? 'UNKNOWN_ERROR'}</Text>
-        <Text style={styles.errorMsg}>{message}</Text>
-      </View>
-
-      {/* Reasons */}
-      <View style={styles.reasonsWrap}>
-        <Text style={styles.reasonsTitle}>─  POSSIBLE CAUSES  ─</Text>
+      {/* 可能原因卡片 */}
+      <View style={S.card}>
+        <Text style={S.cardTitle}>可能原因</Text>
         {reasons.map((r, i) => (
-          <View key={i} style={styles.reasonRow}>
-            <View style={styles.reasonCodeBadge}>
-              <Text style={styles.reasonCodeText}>E{String(i + 1).padStart(2, '0')}</Text>
-            </View>
-            <Text style={styles.reasonText}>{r}</Text>
+          <View key={i} style={S.reasonRow}>
+            <View style={S.reasonNum}><Text style={S.reasonNumText}>{i + 1}</Text></View>
+            <Text style={S.reasonText}>{r}</Text>
           </View>
         ))}
       </View>
 
-      {/* Retry button */}
-      <Pressable
-        style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-        onPress={handleRetry}
-        android_ripple={{ color: 'rgba(239,68,68,0.25)', borderless: false }}
-      >
-        <Text style={styles.buttonText}>↺  重新扫码</Text>
-      </Pressable>
+      {/* 重新扫码按钮 */}
+      <View style={S.btnWrap}>
+        <Pressable
+          style={({ pressed }) => [S.btn, pressed && S.btnPressed]}
+          onPress={handleRetry}
+          android_ripple={{ color: 'rgba(66,170,245,0.15)' }}
+        >
+          <Text style={S.btnText}>↺ 重新扫码</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const S = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
     alignItems: 'center',
-    paddingHorizontal: isTablet ? 80 : 24,
-    paddingTop: isTablet ? 72 : 56,
-    paddingBottom: 40,
+    paddingHorizontal: isTablet ? 80 : 16,
+    paddingBottom: 24,
   },
+  blobL: { position: 'absolute', bottom: '-18%', left: '-18%', width: SH * 0.52, height: SH * 0.52, borderRadius: SH * 0.26, backgroundColor: 'rgba(66,170,245,0.12)' },
+  blobR: { position: 'absolute', bottom: '-22%', right: '-22%', width: SH * 0.46, height: SH * 0.46, borderRadius: SH * 0.23, backgroundColor: 'rgba(66,170,245,0.16)' },
 
-
-
+  // 顶栏
   headerRow: {
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 32,
-    zIndex: 1,
-  },
-  header: { color: colors.text, fontSize: 18, fontWeight: '700' },
-  faultBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 4,
-    backgroundColor: colors.dangerSoft,
-    borderWidth: 1,
-    borderColor: colors.dangerBorder,
-  },
-  faultDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: colors.danger,
-  },
-  faultText: { color: colors.danger, fontSize: 9, fontWeight: '700', letterSpacing: 1 },
-
-  iconWrap: {
+    height: 52,
     marginBottom: 20,
-    width: isTablet ? 120 : 88,
-    height: isTablet ? 120 : 88,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
+    zIndex: 10,
   },
-  iconRingOuter: {
-    position: 'absolute',
-    width: isTablet ? 120 : 88,
-    height: isTablet ? 120 : 88,
-    borderRadius: isTablet ? 60 : 44,
-    borderWidth: 1.5,
-    borderColor: colors.dangerBorder,
-    borderStyle: 'dashed',
-  },
-  iconInner: {
-    width: isTablet ? 92 : 68,
-    height: isTablet ? 92 : 68,
-    borderRadius: isTablet ? 46 : 34,
-    backgroundColor: colors.dangerSoft,
-    borderWidth: 1.5,
-    borderColor: colors.dangerBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // shadow removed from iconInner — Android elevation causes glow artifact
-  iconX: { color: colors.danger, fontSize: isTablet ? 38 : 28, fontWeight: '800', lineHeight: isTablet ? 44 : 32 },
-
-  title: {
-    color: colors.textBright,
-    fontSize: isTablet ? 28 : 20,
-    fontWeight: '900',
-    marginBottom: 5,
-    zIndex: 1,
-    textAlign: 'center',
-  },
-  titleEn: {
-    color: 'rgba(239,68,68,0.4)',
-    fontSize: 9,
-    letterSpacing: 2,
-    marginBottom: 24,
-    zIndex: 1,
-  },
-
-  errorCard: {
-    width: '100%',
-    backgroundColor: colors.dangerSoft,
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.bgWhite,
     borderWidth: 1,
-    borderColor: colors.dangerBorder,
+    borderColor: colors.primaryBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 2,
+    shadowColor: 'rgba(66,170,245,0.10)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+  },
+  backArrow: { fontSize: 26, color: colors.text, lineHeight: 30, marginTop: -2 },
+  header: { fontSize: isTablet ? 18 : 16, fontWeight: '700', color: colors.text },
+
+  // 错误图标
+  iconWrap: { marginBottom: 14, zIndex: 1 },
+  iconCircle: {
+    width: isTablet ? 96 : 80,
+    height: isTablet ? 96 : 80,
+    borderRadius: isTablet ? 48 : 40,
+    backgroundColor: 'rgba(239,68,68,0.10)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(239,68,68,0.20)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconX: { color: colors.danger, fontSize: isTablet ? 38 : 32, fontWeight: '800' },
+
+  title: { color: colors.text, fontSize: isTablet ? 26 : 20, fontWeight: '800', marginBottom: 4, textAlign: 'center', zIndex: 1 },
+  subtitle: { color: colors.subText, fontSize: isTablet ? 15 : 13, textAlign: 'center', marginBottom: 16, zIndex: 1 },
+
+  // 可能原因卡片
+  card: {
+    width: '100%',
+    backgroundColor: colors.bgWhite,
+    borderRadius: 16,
+    padding: 18,
+    zIndex: 1,
+    elevation: 3,
+    shadowColor: 'rgba(239,68,68,0.08)',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.12)',
+  },
+  cardTitle: { color: colors.danger, fontSize: isTablet ? 13 : 11, fontWeight: '600', marginBottom: 10 },
+  reasonRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 },
+  reasonNum: {
+    width: 20,
+    height: 20,
     borderRadius: 10,
-    padding: 16,
-    marginBottom: 20,
-    overflow: 'hidden',
-    zIndex: 1,
-  },
-  errorCardTopLine: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: colors.danger,
-    opacity: 0.6,
-  },
-  errorCode: {
-    color: colors.danger,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    marginBottom: 8,
-  },
-  errorMsg: { color: colors.subText, fontSize: 13, lineHeight: 20 },
-
-  reasonsWrap: { width: '100%', marginBottom: 28, zIndex: 1 },
-  reasonsTitle: {
-    color: 'rgba(239,68,68,0.55)',
-    fontSize: 9,
-    letterSpacing: 2,
-    textAlign: 'center',
-    marginBottom: 14,
-  },
-  reasonRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    marginBottom: 8,
-  },
-  reasonCodeBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    backgroundColor: colors.dangerSoft,
-    borderWidth: 1,
-    borderColor: colors.dangerBorder,
-    borderRadius: 3,
-    flexShrink: 0,
-    marginTop: 2,
-  },
-  reasonCodeText: { color: colors.danger, fontSize: 8, fontWeight: '700' },
-  reasonText: { color: colors.subText, fontSize: 12, flex: 1, lineHeight: 18 },
-
-  button: {
-    width: '100%',
-    height: isTablet ? 64 : 50,
-    borderRadius: 6,
-    backgroundColor: 'rgba(239,68,68,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.5)',
+    backgroundColor: 'rgba(239,68,68,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 'auto',
-    // No elevation/overflow — these cause the black box on Android press
+    flexShrink: 0,
+    marginTop: 1,
   },
-  buttonPressed: { opacity: 0.8 },
-  buttonText: {
-    color: '#ffaaaa',
-    fontSize: isTablet ? 18 : 15,
-    fontWeight: '700',
-    letterSpacing: 1,
+  reasonNumText: { color: colors.danger, fontSize: 10, fontWeight: '700' },
+  reasonText: { color: colors.subText, fontSize: isTablet ? 14 : 13, flex: 1, lineHeight: 20 },
+
+  // 按钮
+  btnWrap: { width: '100%', marginTop: 'auto', zIndex: 1 },
+  btn: {
+    width: '100%',
+    height: isTablet ? 58 : 52,
+    borderRadius: 26,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowColor: 'rgba(66,170,245,0.30)',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 20,
   },
+  btnPressed: { opacity: 0.88 },
+  btnText: { color: '#ffffff', fontSize: isTablet ? 18 : 16, fontWeight: '700' },
 });

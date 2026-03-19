@@ -1,344 +1,287 @@
-import React from 'react';
-import {
-  Clipboard,
-  Dimensions,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, Clipboard, Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WifiManager from 'react-native-wifi-reborn';
-
+import { CommonActions } from '@react-navigation/native';
 import type { WifiGuideScreenProps } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { useAppStore } from '../store/appStore';
 import { saveConnection } from '../services/storage';
 import type { ConnectionRecord } from '../types';
-import { GlowBackground } from '../components/GlowBackground';
+import Svg, { Circle, Path } from 'react-native-svg';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const isTablet = Math.min(SW, SH) >= 768;
+const STEPS = ['点击「复制密码」', '前往系统设置 → WiFi', '选择网络并粘贴密码', '返回本应用继续'];
 
-const STEPS = [
-  '点击上方「复制密码」按钮',
-  '前往系统 设置 → WiFi',
-  '选择目标网络，粘贴密码连接',
-  '连接成功后返回本应用',
-];
+function WifiSvgIcon({ size = 26, color = colors.primary }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size - 6} viewBox="0 0 26 20" fill="none">
+      <Circle cx={13} cy={17} r={2.2} fill={color} />
+      <Path d="M7,11C9,9 11,8 13,8s6,1,6,3" stroke={colors.primaryLight} strokeWidth="1.8" strokeLinecap="round"/>
+      <Path d="M2,6C5.5,2.5 9,1 13,1s7.5,1.5 11,5" stroke={color} strokeWidth="1.8" strokeLinecap="round"/>
+    </Svg>
+  );
+}
 
 export function WifiGuide({ navigation }: WifiGuideScreenProps) {
+  const insets = useSafeAreaInsets();
   const { qrData, setRecord } = useAppStore();
-
   if (!qrData || !qrData.wifi) {
     navigation.navigate('Error', { message: '二维码数据错误', code: 'QR_DATA_ERROR' });
     return null;
   }
   const { ssid, password } = qrData.wifi;
 
-  const handleCopyPassword = () => {
-    Clipboard.setString(password || '');
+  // 涟漪动画
+  const ring1Scale = useRef(new Animated.Value(1)).current;
+  const ring1Opacity = useRef(new Animated.Value(0.5)).current;
+  const ring2Scale = useRef(new Animated.Value(1)).current;
+  const ring2Opacity = useRef(new Animated.Value(0.5)).current;
+
+  useEffect(() => {
+    const makeRing = (scale: Animated.Value, opacity: Animated.Value, delay: number) => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.parallel([
+            Animated.timing(scale, { toValue: 2.8, duration: 2400, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 0, duration: 2400, useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(scale, { toValue: 1, duration: 0, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 0.5, duration: 0, useNativeDriver: true }),
+          ]),
+        ])
+      ).start();
+    };
+    makeRing(ring1Scale, ring1Opacity, 0);
+    makeRing(ring2Scale, ring2Opacity, 1200);
+  }, []);
+
+  const handleGoBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.dispatch(
+        CommonActions.reset({ index: 0, routes: [{ name: 'Init' }] })
+      );
+    }
   };
+
+  const handleCopyPassword = () => { Clipboard.setString(password || ''); };
 
   const handleContinue = async () => {
     try {
-      const currentSSID = await WifiManager.getCurrentWifiSSID();
-      const connected = currentSSID === ssid || currentSSID === `"${ssid}"`;
-      if (!connected) {
-        navigation.navigate('Error', {
-          message: `尚未连接到 ${ssid}，请按步骤操作后再点继续`,
-          code: 'WIFI_NOT_CONNECTED',
-        });
+      const cur = await WifiManager.getCurrentWifiSSID();
+      if (cur !== ssid && cur !== `"${ssid}"`) {
+        navigation.navigate('Error', { message: `尚未连接到 ${ssid}，请按步骤操作后再点继续`, code: 'WIFI_NOT_CONNECTED' });
         return;
       }
-    } catch {
-      // 部分机型无法获取 SSID，放行
-    }
-    const record: ConnectionRecord = {
-      ...qrData.wifi,
-      gatewayIp: qrData.server?.ip,
-      gatewayPort: qrData.server?.port,
-      updatedAt: Date.now(),
-    };
-    saveConnection(record);
-    setRecord(record);
+    } catch {}
+    const record: ConnectionRecord = { ...qrData.wifi, gatewayIp: qrData.server?.ip, gatewayPort: qrData.server?.port, updatedAt: Date.now() };
+    saveConnection(record); setRecord(record);
     navigation.replace('Loading');
   };
 
   return (
-    <View style={styles.container}>
-      <GlowBackground />
+    <View style={[S.container, { paddingTop: insets.top + 8 }]}>
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <View style={S.blobL} /><View style={S.blobR} />
+      </View>
 
-      {/* Header row */}
-      <View style={styles.headerRow}>
-        <Text style={styles.header}>连接 WiFi</Text>
-        <View style={styles.manualBadge}>
-          <View style={styles.manualDot} />
-          <Text style={styles.manualText}>MANUAL</Text>
+      {/* 顶栏 */}
+      <View style={S.headerRow}>
+        <Pressable style={S.backBtn} onPress={handleGoBack} hitSlop={12}>
+          <Text style={S.backArrow}>‹</Text>
+        </Pressable>
+        <Text style={S.header}>连接 WiFi</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
+      {/* WiFi 涟漪图标 */}
+      <View style={S.wifiWrap}>
+        <Animated.View style={[S.ringAnim, { transform: [{ scale: ring1Scale }], opacity: ring1Opacity }]} />
+        <Animated.View style={[S.ringAnim, { transform: [{ scale: ring2Scale }], opacity: ring2Opacity }]} />
+        <View style={S.wifiCircle}>
+          <WifiSvgIcon size={isTablet ? 30 : 26} />
         </View>
       </View>
 
-      {/* WiFi icon with rings */}
-      <View style={styles.wifiIconWrap}>
-        <View style={[styles.wifiRing, styles.wifiRing3]} />
-        <View style={[styles.wifiRing, styles.wifiRing2]} />
-        <View style={[styles.wifiRing, styles.wifiRing1]} />
-        <View style={styles.wifiCircle}>
-          <Text style={styles.wifiEmoji}>📶</Text>
-        </View>
-      </View>
+      <Text style={S.title}>需要手动连接 WiFi</Text>
+      <Text style={S.subtitle}>当前设备不支持自动切换</Text>
 
-      {/* Title */}
-      <Text style={styles.title}>需要手动连接 WiFi</Text>
-      <Text style={styles.titleEn}>MANUAL WIFI CONNECTION REQUIRED</Text>
-
-      {/* SSID card */}
-      <View style={styles.ssidCard}>
-        <View style={styles.ssidCardTopLine} />
-        <Text style={styles.ssidLabel}>─  TARGET NETWORK  ─</Text>
-        <View style={styles.ssidRow}>
+      {/* 目标网络卡片 */}
+      <View style={S.ssidCard}>
+        <Text style={S.ssidLabel}>目标网络</Text>
+        <View style={S.ssidRow}>
           <View>
-            <Text style={styles.ssidName}>{ssid}</Text>
-            <Text style={styles.ssidMeta}>WPA2  ·  企业内网  ·  AUTO-DETECT</Text>
+            <Text style={S.ssidName}>{ssid}</Text>
+            <Text style={S.ssidMeta}>WPA2 · 5GHz</Text>
           </View>
-          <Pressable
-            style={({ pressed }) => [styles.copyBtn, pressed && styles.copyBtnPressed]}
-            onPress={handleCopyPassword}
-          >
-            <Text style={styles.copyBtnText}>复制密码</Text>
+          <Pressable style={({ pressed }) => [S.copyBtn, pressed && { opacity: 0.7 }]} onPress={handleCopyPassword}>
+            <Text style={S.copyBtnText}>复制密码</Text>
           </Pressable>
         </View>
       </View>
 
-      {/* Steps */}
-      <ScrollView
-        style={styles.stepsWrap}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.stepsContent}
-      >
-        <Text style={styles.stepsTitle}>─  OPERATION STEPS  ─</Text>
-        {STEPS.map((step, i) => (
-          <View key={i} style={styles.stepRow}>
-            <View style={styles.stepNum}>
-              <Text style={styles.stepNumText}>{i + 1}</Text>
+      {/* 步骤卡片 */}
+      <ScrollView style={S.stepsWrap} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
+        <View style={S.stepsCard}>
+          {STEPS.map((step, i) => (
+            <View key={i} style={[S.stepRow, i < STEPS.length - 1 && { marginBottom: 12 }]}>
+              <View style={S.stepNum}><Text style={S.stepNumText}>{i + 1}</Text></View>
+              <Text style={S.stepText}>{step}</Text>
             </View>
-            <Text style={styles.stepText}>{step}</Text>
-          </View>
-        ))}
-
-        <View style={styles.noteCard}>
-          <Text style={styles.noteIcon}>⚠️</Text>
-          <Text style={styles.noteText}>
-            部分 Android 设备因系统限制无法自动切换 WiFi，需手动操作。
-          </Text>
+          ))}
         </View>
       </ScrollView>
 
-      {/* Continue button */}
-      <Pressable
-        style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-        onPress={handleContinue}
-      >
-        <Text style={styles.buttonText}>已连接，继续  ▸</Text>
+      {/* 底部按钮 */}
+      <Pressable style={({ pressed }) => [S.btn, pressed && { opacity: 0.88 }]} onPress={handleContinue}>
+        <Text style={S.btnText}>已连接，继续 ▸</Text>
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const S = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
     alignItems: 'center',
-    paddingHorizontal: isTablet ? 80 : 24,
-    paddingTop: isTablet ? 72 : 56,
-    paddingBottom: 32,
+    paddingHorizontal: isTablet ? 80 : 16,
+    paddingBottom: 24,
   },
+  blobL: { position: 'absolute', bottom: '-18%', left: '-18%', width: SH * 0.52, height: SH * 0.52, borderRadius: SH * 0.26, backgroundColor: 'rgba(66,170,245,0.12)' },
+  blobR: { position: 'absolute', bottom: '-22%', right: '-22%', width: SH * 0.46, height: SH * 0.46, borderRadius: SH * 0.23, backgroundColor: 'rgba(66,170,245,0.16)' },
 
+  // 顶栏
   headerRow: {
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 28,
-    zIndex: 1,
+    height: 52,
+    marginBottom: 12,
+    zIndex: 10,
   },
-  header: { color: colors.text, fontSize: 18, fontWeight: '700' },
-  manualBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 4,
-    backgroundColor: colors.warningSoft,
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.bgWhite,
     borderWidth: 1,
-    borderColor: colors.warningBorder,
-  },
-  manualDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.warning },
-  manualText: { color: colors.warning, fontSize: 9, fontWeight: '700', letterSpacing: 1 },
-
-  // WiFi icon
-  wifiIconWrap: {
-    width: isTablet ? 120 : 90,
-    height: isTablet ? 120 : 90,
+    borderColor: colors.primaryBorder,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 18,
-    zIndex: 1,
-    position: 'relative',
+    elevation: 2,
+    shadowColor: 'rgba(66,170,245,0.10)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
   },
-  wifiRing: {
+  backArrow: { fontSize: 26, color: colors.text, lineHeight: 30, marginTop: -2 },
+  header: { fontSize: isTablet ? 18 : 16, fontWeight: '700', color: colors.text },
+
+  // WiFi 涟漪
+  wifiWrap: {
+    width: 80,
+    height: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+    zIndex: 1,
+  },
+  ringAnim: {
     position: 'absolute',
-    borderRadius: 999,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     borderWidth: 1,
-    borderColor: 'rgba(30,33,247,0.4)',
-    // Center each ring explicitly
-    alignSelf: 'center',
-    top: undefined,
-    left: undefined,
+    borderColor: 'rgba(66,170,245,0.25)',
   },
-  wifiRing1: { width: isTablet ? 82 : 62, height: isTablet ? 82 : 62, top: isTablet ? 19 : 14, left: isTablet ? 19 : 14 },
-  wifiRing2: { width: isTablet ? 100 : 76, height: isTablet ? 100 : 76, top: isTablet ? 10 : 7, left: isTablet ? 10 : 7, opacity: 0.5 },
-  wifiRing3: { width: isTablet ? 120 : 90, height: isTablet ? 120 : 90, top: 0, left: 0, opacity: 0.25 },
   wifiCircle: {
-    width: isTablet ? 76 : 56,
-    height: isTablet ? 76 : 56,
-    borderRadius: isTablet ? 38 : 28,
-    backgroundColor: 'rgba(30,33,247,0.2)',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.primarySoft,
     borderWidth: 1,
-    borderColor: 'rgba(30,33,247,0.5)',
+    borderColor: colors.primaryBorder,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 6,
-  },
-  wifiEmoji: { fontSize: 24 },
-
-  title: {
-    color: colors.textBright,
-    fontSize: isTablet ? 28 : 20,
-    fontWeight: '900',
-    marginBottom: 5,
-    textAlign: 'center',
-    zIndex: 1,
-  },
-  titleEn: {
-    color: colors.mutedText,
-    fontSize: 9,
-    letterSpacing: 1.5,
-    marginBottom: 22,
-    textAlign: 'center',
-    zIndex: 1,
   },
 
-  // SSID card
+  title: { color: colors.text, fontSize: isTablet ? 24 : 19, fontWeight: '800', marginBottom: 4, textAlign: 'center', zIndex: 1 },
+  subtitle: { color: colors.subText, fontSize: isTablet ? 15 : 13, marginBottom: 16, textAlign: 'center', zIndex: 1 },
+
+  // SSID 卡片
   ssidCard: {
     width: '100%',
-    backgroundColor: colors.bgCard,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    padding: 16,
-    marginBottom: 20,
-    overflow: 'hidden',
-    zIndex: 1,
-  },
-  ssidCardTopLine: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: colors.primary,
-    opacity: 0.5,
-  },
-  ssidLabel: {
-    color: colors.mutedText,
-    fontSize: 9,
-    letterSpacing: 2,
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  ssidRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  ssidName: { color: colors.textBright, fontSize: 16, fontWeight: '700' },
-  ssidMeta: { color: colors.mutedText, fontSize: 10, marginTop: 3, letterSpacing: 0.5 },
-  copyBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    backgroundColor: colors.primarySoft,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
-  },
-  copyBtnPressed: { opacity: 0.7 },
-  copyBtnText: { color: colors.primaryLightest, fontSize: 12, fontWeight: '600' },
-
-  // Steps
-  stepsWrap: { flex: 1, width: '100%', zIndex: 1 },
-  stepsContent: { paddingBottom: 8 },
-  stepsTitle: {
-    color: colors.mutedText,
-    fontSize: 9,
-    letterSpacing: 2,
-    textAlign: 'center',
-    marginBottom: 14,
-  },
-  stepRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
+    backgroundColor: colors.bgWhite,
+    borderRadius: 16,
+    padding: 18,
     marginBottom: 12,
+    zIndex: 1,
+    elevation: 4,
+    shadowColor: 'rgba(66,170,245,0.10)',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 16,
   },
-  stepNum: {
-    width: 22,
-    height: 22,
-    borderRadius: 4,
+  ssidLabel: { color: colors.mutedText, fontSize: isTablet ? 12 : 11, marginBottom: 8 },
+  ssidRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  ssidName: { color: colors.text, fontSize: isTablet ? 18 : 16, fontWeight: '700' },
+  ssidMeta: { color: colors.mutedText, fontSize: isTablet ? 12 : 11, marginTop: 2 },
+  copyBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     backgroundColor: colors.primarySoft,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.primaryBorder,
+  },
+  copyBtnText: { color: colors.primary, fontSize: isTablet ? 14 : 13, fontWeight: '600' },
+
+  // 步骤
+  stepsWrap: { flex: 1, width: '100%', zIndex: 1 },
+  stepsCard: {
+    backgroundColor: colors.bgWhite,
+    borderRadius: 16,
+    padding: 18,
+    elevation: 4,
+    shadowColor: 'rgba(66,170,245,0.10)',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 16,
+  },
+  stepRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  stepNum: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    marginTop: 1,
   },
-  stepNumText: { color: colors.primaryLightest, fontSize: 10, fontWeight: '700' },
-  stepText: { color: colors.subText, fontSize: 13, flex: 1, lineHeight: 20 },
+  stepNumText: { color: '#ffffff', fontSize: 11, fontWeight: '700' },
+  stepText: { color: colors.subText, fontSize: isTablet ? 15 : 13, flex: 1 },
 
-  noteCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    backgroundColor: colors.warningSoft,
-    borderWidth: 1,
-    borderColor: colors.warningBorder,
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 6,
-    marginBottom: 16,
-  },
-  noteIcon: { fontSize: 14 },
-  noteText: { color: colors.subText, fontSize: 12, flex: 1, lineHeight: 18 },
-
-  button: {
+  // 底部按钮
+  btn: {
     width: '100%',
-    height: isTablet ? 64 : 50,
-    borderRadius: 6,
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primary,
+    height: isTablet ? 58 : 52,
+    borderRadius: 26,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.primary,
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
     zIndex: 1,
+    elevation: 6,
+    shadowColor: 'rgba(66,170,245,0.30)',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 20,
   },
-  buttonPressed: { opacity: 0.85 },
-  buttonText: { color: colors.text, fontSize: isTablet ? 18 : 15, fontWeight: '700', letterSpacing: 1 },
+  btnText: { color: '#ffffff', fontSize: isTablet ? 18 : 16, fontWeight: '700' },
 });

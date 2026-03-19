@@ -1,21 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Animated,
-  Dimensions,
-  Easing,
-  Modal,
-  ActivityIndicator,
-  PermissionsAndroid,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+  Animated, Dimensions, Easing, Modal, ActivityIndicator,
+  PermissionsAndroid, Platform, Pressable,
+  StyleSheet, Text, View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Camera, CameraType } from 'react-native-camera-kit';
 import WifiManager from 'react-native-wifi-reborn';
-
+import { CommonActions } from '@react-navigation/native';
 import type { ScanScreenProps } from '../navigation/types';
 import { colors } from '../theme/colors';
 import { parseQr } from '../utils/wifi';
@@ -23,171 +15,115 @@ import { useAppStore } from '../store/appStore';
 import { getConnection, saveConnection } from '../services/storage';
 import { getDeviceLayout } from '../utils/device';
 import type { ConnectionRecord } from '../types';
-import { GlowBackground } from '../components/GlowBackground';
-import { AppIcon } from '../components/AppIcon';
 import Svg, { Path, Rect } from 'react-native-svg';
 
-// 模块级 tablet 检测，StyleSheet.create() 可访问
 const { width: SW, height: SH } = Dimensions.get('window');
 const isTablet = Math.min(SW, SH) >= 768;
 
 async function requestCameraPermission(): Promise<boolean> {
   if (Platform.OS !== 'android') return true;
-  const result = await PermissionsAndroid.request(
-    PermissionsAndroid.PERMISSIONS.CAMERA,
-    {
-      title: '需要相机权限',
-      message: '扫码接入需要使用相机读取设备二维码',
-      buttonNegative: '拒绝',
-      buttonPositive: '允许',
-    },
-  );
-  return result === PermissionsAndroid.RESULTS.GRANTED;
+  const r = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA,
+    { title: '需要相机权限', message: '扫码接入需要使用相机读取设备二维码', buttonNegative: '拒绝', buttonPositive: '允许' });
+  return r === PermissionsAndroid.RESULTS.GRANTED;
 }
-
 async function requestWifiPermissions(): Promise<boolean> {
   if (Platform.OS !== 'android') return true;
-  const perms = [
-    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-    PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
-  ];
-  const result = await PermissionsAndroid.requestMultiple(perms);
-  return perms.every(p => result[p] === PermissionsAndroid.RESULTS.GRANTED);
+  const perms = [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION, PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION];
+  const r = await PermissionsAndroid.requestMultiple(perms);
+  return perms.every(p => r[p] === PermissionsAndroid.RESULTS.GRANTED);
 }
-
-
-// 白色/主题色电脑图标
-function DesktopSvgIcon({ size = 24, color = '#ffffff' }: { size?: number; color?: string }) {
+function DesktopSvgIcon({ size = 22, color = '#2196e8' }: { size?: number; color?: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Rect x="2" y="3" width="20" height="13" rx="2" stroke={color} strokeWidth="1.6" fill="none"/>
       <Path d="M8 21h8M12 17v4" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
-      <Path d="M6 8h4M6 11h3" stroke={color} strokeWidth="1.3" strokeLinecap="round" opacity="0.6"/>
-      <Rect x="14" y="7" width="4" height="4" rx="0.5" stroke={color} strokeWidth="1.3" fill="none" opacity="0.6"/>
+      <Path d="M6 8h4M6 11h3" stroke={color} strokeWidth="1.3" strokeLinecap="round" opacity="0.5"/>
+      <Rect x="14" y="7" width="4" height="4" rx="0.5" stroke={color} strokeWidth="1.3" fill="none" opacity="0.5"/>
     </Svg>
   );
 }
 
 export function ScanScreen({ navigation }: ScanScreenProps) {
-  const { isTablet } = getDeviceLayout();
+  const insets = useSafeAreaInsets();
+  const { isTablet: IT } = getDeviceLayout();
   const { setQrData, setRecord } = useAppStore();
-
-  const [cameraReady, setCameraReady] = useState(Platform.OS !== 'android');
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [cameraReady, setCameraReady]       = useState(Platform.OS !== 'android');
+  const [isProcessing, setIsProcessing]     = useState(false);
   const [processingText, setProcessingText] = useState('正在识别...');
-  const [lastRecord, setLastRecord] = useState<ConnectionRecord | null>(null);
-  const scanAnim = useRef(new Animated.Value(0)).current;
+  const [lastRecord, setLastRecord]         = useState<ConnectionRecord | null>(null);
+  const scanAnim      = useRef(new Animated.Value(0)).current;
   const lastScannedRef = useRef('');
 
+  useEffect(() => { const h = getConnection(); if (h) setLastRecord(h); }, []);
+  useEffect(() => { requestCameraPermission().then(ok => { if (ok) setCameraReady(true); }); }, []);
   useEffect(() => {
-    const historic = getConnection();
-    if (historic) setLastRecord(historic);
-  }, []);
-
-  useEffect(() => {
-    requestCameraPermission().then(ok => { if (ok) setCameraReady(true); });
-  }, []);
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(scanAnim, {
-          toValue: 1,
-          duration: 2200,
-          easing: Easing.inOut(Easing.linear),
-          useNativeDriver: true,
-        }),
-        Animated.timing(scanAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
-      ]),
-    ).start();
+    Animated.loop(Animated.sequence([
+      Animated.timing(scanAnim, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.linear), useNativeDriver: true }),
+      Animated.timing(scanAnim, { toValue: 0, duration: 2000, easing: Easing.inOut(Easing.linear), useNativeDriver: true }),
+    ])).start();
   }, [scanAnim]);
 
-  const frameSize = isTablet ? 280 : 210;
-  const scanLineY = scanAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, frameSize - 2],
-  });
+  const frameSize = IT ? 300 : 220;
+  const scanLineY = scanAnim.interpolate({ inputRange: [0, 1], outputRange: [0, frameSize - 2] });
 
-  const connectToWifi = useCallback(async (
-    ssid: string,
-    password: string,
-    security: string,
-    hidden: boolean,
-  ): Promise<boolean> => {
+  const handleGoBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.dispatch(
+        CommonActions.reset({ index: 0, routes: [{ name: 'Init' }] })
+      );
+    }
+  };
+
+  const connectToWifi = useCallback(async (ssid: string, password: string, security: string, hidden: boolean): Promise<boolean> => {
     const wifiOk = await requestWifiPermissions();
     if (!wifiOk) throw new Error('未获取定位权限，无法操作 WiFi');
-
     const isEnabled = await WifiManager.isEnabled();
     if (!isEnabled) {
       setProcessingText('正在开启 WiFi...');
-      try {
-        await WifiManager.setEnabled(true);
-        await new Promise<void>(r => setTimeout(r, 1800));
-      } catch {
-        navigation.navigate('WifiGuide');
-        return false;
-      }
+      try { await WifiManager.setEnabled(true); await new Promise<void>(r => setTimeout(r, 1800)); }
+      catch { navigation.navigate('WifiGuide'); return false; }
     }
-
     setProcessingText(`正在连接 ${ssid}...`);
     const pwd = security === 'nopass' ? null : password || null;
-    try {
-      await WifiManager.connectToProtectedSSID(ssid, pwd, security === 'WEP', hidden);
-    } catch {
-      navigation.navigate('WifiGuide');
-      return false;
-    }
+    try { await WifiManager.connectToProtectedSSID(ssid, pwd, security === 'WEP', hidden); }
+    catch { navigation.navigate('WifiGuide'); return false; }
     return true;
   }, [navigation]);
 
   const connectByWifi = useCallback(async (code: string) => {
-    setProcessingText('正在识别...');
-    setIsProcessing(true);
+    setProcessingText('正在识别...'); setIsProcessing(true);
     try {
       const { wifi, server } = parseQr(code);
       setQrData({ wifi, server });
       const ok = await connectToWifi(wifi.ssid, wifi.password, wifi.security, wifi.hidden);
       if (!ok) { setIsProcessing(false); return; }
       const record: ConnectionRecord = { ...wifi, gatewayIp: server?.ip, gatewayPort: server?.port, updatedAt: Date.now() };
-      saveConnection(record);
-      setRecord(record);
+      saveConnection(record); setRecord(record);
       navigation.replace('Loading');
     } catch (err) {
-      setIsProcessing(false);
-      lastScannedRef.current = '';
-      navigation.navigate('Error', {
-        message: err instanceof Error ? err.message : '连接失败',
-        code: 'SCAN_FAILED',
-      });
+      setIsProcessing(false); lastScannedRef.current = '';
+      navigation.navigate('Error', { message: err instanceof Error ? err.message : '连接失败', code: 'SCAN_FAILED' });
     }
   }, [connectToWifi, navigation, setRecord]);
 
   const handleResumeLastRecord = useCallback(async () => {
     if (!lastRecord || isProcessing) return;
-    setProcessingText('正在连接...');
-    setIsProcessing(true);
+    setProcessingText('正在连接...'); setIsProcessing(true);
     try {
-      const ok = await connectToWifi(
-        lastRecord.ssid,
-        lastRecord.password ?? '',
-        lastRecord.security ?? 'WPA',
-        lastRecord.hidden ?? false,
-      );
+      const ok = await connectToWifi(lastRecord.ssid, lastRecord.password ?? '', lastRecord.security ?? 'WPA', lastRecord.hidden ?? false);
       if (!ok) { setIsProcessing(false); return; }
-      setRecord(lastRecord);
-      navigation.replace('Loading');
+      setRecord(lastRecord); navigation.replace('Loading');
     } catch (err) {
       setIsProcessing(false);
-      navigation.navigate('Error', {
-        message: err instanceof Error ? err.message : '连接失败',
-        code: 'RESUME_FAILED',
-      });
+      navigation.navigate('Error', { message: err instanceof Error ? err.message : '连接失败', code: 'RESUME_FAILED' });
     }
   }, [lastRecord, isProcessing, connectToWifi, navigation, setRecord]);
 
-  const handleReadCode = (event: { nativeEvent: { codeStringValue: string } }) => {
+  const handleReadCode = (e: { nativeEvent: { codeStringValue: string } }) => {
     if (isProcessing) return;
-    const code = event.nativeEvent.codeStringValue?.trim();
+    const code = e.nativeEvent.codeStringValue?.trim();
     if (!code || code === lastScannedRef.current) return;
     lastScannedRef.current = code;
     void connectByWifi(code);
@@ -195,354 +131,181 @@ export function ScanScreen({ navigation }: ScanScreenProps) {
 
   return (
     <>
-      {/* ── 全屏 Loading 弹框 */}
       <Modal visible={isProcessing} transparent animationType="fade" statusBarTranslucent>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            {/* 卡片顶部光条 */}
-            <View style={styles.modalTopLine} />
+        <View style={S.modalBg}>
+          <View style={S.modalCard}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.modalText}>{processingText}</Text>
-            <Text style={styles.modalSub}>PROCESSING...</Text>
+            <Text style={S.modalText}>{processingText}</Text>
+            <Text style={S.modalSub}>请稍候...</Text>
           </View>
         </View>
       </Modal>
 
-      <ScrollView
-        contentContainerStyle={[styles.container, isTablet && styles.containerTablet]}
-        bounces={false}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* 背景呼吸光 */}
-        <GlowBackground />
+      <View style={[S.container, IT && S.containerTablet, { paddingTop: insets.top + 8 }]}>
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <View style={S.blobL} /><View style={S.blobR} />
+        </View>
 
-        {/* Header */}
-        <View style={styles.headerRow}>
-          <Text style={styles.header}>扫码连接</Text>
-          <View style={styles.statusBadge}>
-            <View style={styles.statusDot} />
-            <Text style={styles.statusText}>READY</Text>
+        {/* 顶栏 */}
+        <View style={S.headerRow}>
+          <Pressable style={S.backBtn} onPress={handleGoBack} hitSlop={12}>
+            <Text style={S.backArrow}>‹</Text>
+          </Pressable>
+          <Text style={S.header}>扫码连接</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        {/* 提示文字 */}
+        <Text style={S.subtitle}>将二维码放入框内，自动识别</Text>
+
+        {/* 扫码框 — 自适应居中 */}
+        <View style={S.frameWrap}>
+          <View style={[S.frame, { width: frameSize, height: frameSize }]}>
+            {cameraReady && (
+              <Camera style={StyleSheet.absoluteFillObject} cameraType={CameraType.Back}
+                scanBarcode={!isProcessing} showFrame={false} onReadCode={handleReadCode} scanThrottleDelay={1500}/>
+            )}
+            <Animated.View pointerEvents="none" style={[S.scanLine, { transform: [{ translateY: scanLineY }] }]} />
+            <View style={[S.corner, S.cTL]} /><View style={[S.corner, S.cTR]} />
+            <View style={[S.corner, S.cBL]} /><View style={[S.corner, S.cBR]} />
           </View>
+          <Text style={S.hint}>请向管理员获取二维码</Text>
         </View>
 
-        {/* Hero icon */}
-        <View style={styles.heroWrap}>
-          <View style={styles.heroGlow} />
-          <View style={styles.heroCircle}>
-            <AppIcon size={isTablet ? 58 : 42} />
-          </View>
-        </View>
-
-        {/* Title */}
-        <Text style={styles.title}>连接边缘服务器</Text>
-        <Text style={styles.subtitle}>Scan to Connect Edge Server</Text>
-
-        {/* Scan frame */}
-        <View style={[
-          styles.scanFrame,
-          { width: frameSize, height: frameSize },
-          isTablet && styles.scanFrameTablet,
-        ]}>
-          {/* 相机 — 透明背景实现"镂空"效果 */}
-          {cameraReady && (
-            <Camera
-              style={StyleSheet.absoluteFillObject}
-              cameraType={CameraType.Back}
-              scanBarcode={!isProcessing}
-              showFrame={false}
-              onReadCode={handleReadCode}
-              scanThrottleDelay={1500}
-            />
-          )}
-
-          {/* 雷达扫描线 */}
-          <Animated.View
-            pointerEvents="none"
-            style={[styles.scanLine, { transform: [{ translateY: scanLineY }] }]}
-          />
-
-          {/* 四角 bracket */}
-          <View style={[styles.corner, styles.cornerTL]} />
-          <View style={[styles.corner, styles.cornerTR]} />
-          <View style={[styles.corner, styles.cornerBL]} />
-          <View style={[styles.corner, styles.cornerBR]} />
-
-          {/* 中心准星点 */}
-          <View style={styles.centerDot} />
-        </View>
-
-        {/* Hint */}
-        <Text style={styles.tip}>
-          将二维码放入框内，
-          <Text style={styles.tipHighlight}>自动识别</Text>
-        </Text>
-        <Text style={styles.hint}>请向管理员获取二维码</Text>
-
-        {/* 历史连接卡片 */}
+        {/* 上次连接卡片 — 底部 */}
         {lastRecord && (
-          <Pressable
-            style={({ pressed }) => [
-              styles.historyCard,
-              pressed && styles.historyCardPressed,
-            ]}
-            onPress={handleResumeLastRecord}
-            disabled={isProcessing}
-          >
-            <View style={styles.historyTopLine} />
-            <View style={styles.historyLeft}>
-              <View style={styles.historyIconWrap}>
-                <DesktopSvgIcon size={isTablet ? 28 : 22} color={colors.primaryLightest} />
+          <Pressable style={({ pressed }) => [S.card, pressed && S.cardPressed]}
+            onPress={handleResumeLastRecord} disabled={isProcessing}>
+            <View style={S.cardLeft}>
+              <View style={S.cardIconWrap}>
+                <DesktopSvgIcon size={IT ? 28 : 24} color={colors.primaryLight} />
               </View>
               <View>
-                <Text style={styles.historyLabel}>上次连接</Text>
-                <Text style={styles.historySSID}>{lastRecord.ssid}</Text>
+                <Text style={S.cardLabel}>上次连接</Text>
+                <Text style={S.cardSSID}>{lastRecord.ssid}</Text>
               </View>
             </View>
-            <View style={styles.historyBtn}>
-              <Text style={styles.historyBtnText}>连接 →</Text>
-            </View>
+            <View style={S.cardBtn}><Text style={S.cardBtnText}>连接</Text></View>
           </Pressable>
         )}
-      </ScrollView>
+      </View>
     </>
   );
 }
 
-const styles = StyleSheet.create({
+const S = StyleSheet.create({
   container: {
-    flexGrow: 1,
+    flex: 1,
     backgroundColor: colors.bg,
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 40,
-    paddingBottom: 32,
+    paddingHorizontal: 16,
+    paddingBottom: 20,
   },
-  containerTablet: { paddingTop: 56, paddingHorizontal: 64 },
+  containerTablet: { paddingHorizontal: 64 },
+  blobL: { position: 'absolute', bottom: '-18%', left: '-18%', width: SH * 0.52, height: SH * 0.52, borderRadius: SH * 0.26, backgroundColor: 'rgba(66,170,245,0.12)' },
+  blobR: { position: 'absolute', bottom: '-22%', right: '-22%', width: SH * 0.46, height: SH * 0.46, borderRadius: SH * 0.23, backgroundColor: 'rgba(66,170,245,0.16)' },
 
-  // Header
+  // 顶栏
   headerRow: {
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
-    zIndex: 1,
+    height: 52,
+    zIndex: 10,
   },
-  header: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 4,
-    backgroundColor: colors.successSoft,
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.bgWhite,
     borderWidth: 1,
-    borderColor: colors.successBorder,
-  },
-  statusDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: colors.success,
-  },
-  statusText: {
-    color: colors.success,
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-
-  // Hero
-  heroWrap: {
-    marginBottom: isTablet ? 24 : 18,
+    borderColor: colors.primaryBorder,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 1,
+    elevation: 2,
+    shadowColor: 'rgba(66,170,245,0.10)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
   },
-  heroGlow: {}, // removed
-  heroCircle: {
-    width: isTablet ? 110 : 80,
-    height: isTablet ? 110 : 80,
-    borderRadius: isTablet ? 55 : 40,
-    backgroundColor: 'rgba(30,33,247,0.18)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(30,33,247,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  backArrow: { fontSize: 26, color: colors.text, lineHeight: 30, marginTop: -2 },
+  header: { fontSize: isTablet ? 18 : 16, fontWeight: '700', color: colors.text },
 
-  // Title
-  title: {
-    color: colors.textBright,
-    fontSize: isTablet ? 28 : 21,
-    fontWeight: '900',
-    marginBottom: isTablet ? 6 : 3,
-    textAlign: 'center',
-    zIndex: 1,
-  },
   subtitle: {
-    color: colors.mutedText,
-    fontSize: isTablet ? 13 : 10,
-    letterSpacing: 1.5,
-    marginBottom: isTablet ? 28 : 20,
+    color: colors.subText,
+    fontSize: isTablet ? 16 : 14,
+    marginBottom: 16,
     textAlign: 'center',
     zIndex: 1,
   },
 
-  // Scan frame
-  scanFrame: {
-    overflow: 'hidden',
-    backgroundColor: 'rgba(3,5,26,0.15)', // 接近透明，露出相机
-    marginBottom: 18,
-    position: 'relative',
+  // 扫码框容器 — flex:1 让它占据中间可用空间，自适应长屏
+  frameWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
     zIndex: 1,
   },
-  scanFrameTablet: { marginBottom: 24 },
-
+  frame: {
+    overflow: 'hidden',
+    backgroundColor: 'rgba(66,170,245,0.03)',
+    borderRadius: 14,
+    position: 'relative',
+  },
   scanLine: {
     position: 'absolute',
     left: '5%',
     width: '90%',
     height: 2,
     backgroundColor: colors.primary,
-    elevation: 4,   // Android shadow approximation
     zIndex: 3,
   },
+  corner: { position: 'absolute', width: 24, height: 24, borderColor: colors.primary, borderWidth: 0, zIndex: 4 },
+  cTL: { left: -1, top: -1, borderLeftWidth: 3, borderTopWidth: 3, borderTopLeftRadius: 14 },
+  cTR: { right: -1, top: -1, borderRightWidth: 3, borderTopWidth: 3, borderTopRightRadius: 14 },
+  cBL: { left: -1, bottom: -1, borderLeftWidth: 3, borderBottomWidth: 3, borderBottomLeftRadius: 14 },
+  cBR: { right: -1, bottom: -1, borderRightWidth: 3, borderBottomWidth: 3, borderBottomRightRadius: 14 },
 
-  corner: {
-    position: 'absolute',
-    width: 24,
-    height: 24,
-    borderColor: colors.primary,
-    borderWidth: 0,
-    zIndex: 4,
-  },
-  cornerTL: { left: 0, top: 0, borderLeftWidth: 2.5, borderTopWidth: 2.5 },
-  cornerTR: { right: 0, top: 0, borderRightWidth: 2.5, borderTopWidth: 2.5 },
-  cornerBL: { left: 0, bottom: 0, borderLeftWidth: 2.5, borderBottomWidth: 2.5 },
-  cornerBR: { right: 0, bottom: 0, borderRightWidth: 2.5, borderBottomWidth: 2.5 },
+  hint: { color: colors.mutedText, fontSize: isTablet ? 13 : 12, textAlign: 'center', marginTop: 12 },
 
-  centerDot: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    marginTop: -4,
-    marginLeft: -4,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(30,33,247,0.53)',
-    zIndex: 3,
-  },
-
-  // Hints
-  tip: {
-    color: colors.subText,
-    fontSize: 13,
-    textAlign: 'center',
-    marginBottom: 8,
-    zIndex: 1,
-  },
-  tipHighlight: { color: colors.primary, fontWeight: '700' },
-  hint: {
-    color: colors.mutedText,
-    fontSize: 11,
-    textAlign: 'center',
-    letterSpacing: 0.3,
-    zIndex: 1,
-  },
-
-  // History card
-  historyCard: {
+  // 上次连接卡片
+  card: {
     width: '100%',
-    marginTop: isTablet ? 28 : 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.bgCard,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 14,
-    overflow: 'hidden',
+    backgroundColor: colors.bgWhite,
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
     zIndex: 1,
+    elevation: 4,
+    shadowColor: 'rgba(66,170,245,0.10)',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 16,
   },
-  historyCardPressed: {
+  cardPressed: { backgroundColor: 'rgba(66,170,245,0.04)' },
+  cardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  cardIconWrap: {
+    width: isTablet ? 52 : 46,
+    height: isTablet ? 52 : 46,
+    borderRadius: isTablet ? 14 : 12,
     backgroundColor: colors.primarySoft,
-    borderColor: colors.primaryBorder,
-  },
-  historyTopLine: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: colors.primary,
-    opacity: 0.5,
-  },
-  historyLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  historyIconWrap: {
-    width: isTablet ? 56 : 44,
-    height: isTablet ? 56 : 44,
-    borderRadius: isTablet ? 12 : 10,
-    backgroundColor: 'rgba(30,33,247,0.18)',
     borderWidth: 1,
-    borderColor: 'rgba(30,33,247,0.4)',
+    borderColor: colors.primaryBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  historyIconEmoji: { fontSize: 22 },
-  historyLabel: { color: colors.mutedText, fontSize: 9, letterSpacing: 0.5, marginBottom: 3 },
-  historySSID: { color: colors.textBright, fontSize: isTablet ? 17 : 14, fontWeight: '700' },
-  historyMeta: { color: colors.mutedText, fontSize: 11, marginTop: 2 },
-  historyBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    backgroundColor: colors.primarySoft,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
-  },
-  historyBtnText: { color: colors.primaryLightest, fontSize: 12, fontWeight: '600' },
+  cardLabel: { color: colors.mutedText, fontSize: isTablet ? 11 : 10, marginBottom: 2 },
+  cardSSID: { color: colors.text, fontSize: isTablet ? 18 : 16, fontWeight: '700' },
+  cardBtn: { paddingHorizontal: 16, paddingVertical: 8, backgroundColor: colors.primary, borderRadius: 22 },
+  cardBtnText: { color: '#ffffff', fontSize: isTablet ? 14 : 13, fontWeight: '600' },
 
   // Modal
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(3,5,26,0.85)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalCard: {
-    backgroundColor: colors.bgCardStrong,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 16,
-    paddingVertical: 32,
-    paddingHorizontal: 40,
-    alignItems: 'center',
-    gap: 14,
-    minWidth: 180,
-    overflow: 'hidden',
-  },
-  modalTopLine: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: colors.primary,
-    opacity: 0.7,
-  },
-  modalText: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  modalSub: {
-    color: colors.mutedText,
-    fontSize: 9,
-    letterSpacing: 2,
-  },
+  modalBg: { flex: 1, backgroundColor: 'rgba(26,28,58,0.55)', alignItems: 'center', justifyContent: 'center' },
+  modalCard: { backgroundColor: colors.bgWhite, borderRadius: 16, paddingVertical: 32, paddingHorizontal: 40, alignItems: 'center', gap: 14, minWidth: 180, elevation: 10 },
+  modalText: { color: colors.text, fontSize: 16, fontWeight: '600' },
+  modalSub: { color: colors.mutedText, fontSize: 13 },
 });
