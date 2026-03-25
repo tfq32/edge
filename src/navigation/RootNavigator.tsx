@@ -37,7 +37,7 @@ export function RootNavigator() {
         <Stack.Screen
           name="Loading"
           component={LoadingScreen}
-          options={{ animation: 'fade' }}
+          options={{ animation: 'fade', gestureEnabled: false }}
         />
         <Stack.Screen
           name="WifiGuide"
@@ -47,15 +47,12 @@ export function RootNavigator() {
         <Stack.Screen
           name="Error"
           component={ErrorScreen}
-          options={{ animation: 'fade' }}
+          options={{ animation: 'fade', gestureEnabled: false }}
         />
         <Stack.Screen
           name="Desktop"
           component={DesktopScreen}
-          options={{
-            animation: 'fade',
-            gestureEnabled: false,
-          }}
+          options={{ animation: 'fade', gestureEnabled: false }}
         />
         <Stack.Screen
           name="Webview"

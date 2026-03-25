@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, BackHandler, Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions } from '@react-navigation/native';
 import WifiManager from 'react-native-wifi-reborn';
@@ -21,6 +21,12 @@ export function ErrorScreen({ navigation, route }: ErrorScreenProps) {
   const { message, code } = route.params;
   const { reset } = useAppStore();
 
+  // 禁用 Android 硬件返回键
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
+  }, []);
+
   const shakeAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.loop(Animated.sequence([
@@ -35,19 +41,6 @@ export function ErrorScreen({ navigation, route }: ErrorScreenProps) {
     ])).start();
     return () => shakeAnim.stopAnimation();
   }, [shakeAnim]);
-
-  const handleGoBack = () => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-    } else {
-      navigation.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [{ name: 'Init' }],
-        })
-      );
-    }
-  };
 
   const handleRetry = () => {
     reset();
@@ -69,14 +62,8 @@ export function ErrorScreen({ navigation, route }: ErrorScreenProps) {
         <View style={S.blobL} /><View style={S.blobR} />
       </View>
 
-      {/* 顶栏 */}
-      <View style={S.headerRow}>
-        <Pressable style={S.backBtn} onPress={handleGoBack} hitSlop={12}>
-          <Text style={S.backArrow}>‹</Text>
-        </Pressable>
-        <Text style={S.header}>连接失败</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      {/* 顶栏标题 */}
+      <Text style={S.header}>连接失败</Text>
 
       {/* 错误图标 */}
       <Animated.View style={[S.iconWrap, { transform: [{ translateX: shakeAnim }] }]}>
@@ -125,32 +112,7 @@ const S = StyleSheet.create({
   blobR: { position: 'absolute', bottom: '-22%', right: '-22%', width: SH * 0.46, height: SH * 0.46, borderRadius: SH * 0.23, backgroundColor: 'rgba(66,170,245,0.16)' },
 
   // 顶栏
-  headerRow: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    height: 52,
-    marginBottom: 20,
-    zIndex: 10,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.bgWhite,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 2,
-    shadowColor: 'rgba(66,170,245,0.10)',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-  },
-  backArrow: { fontSize: 26, color: colors.text, lineHeight: 30, marginTop: -2 },
-  header: { fontSize: isTablet ? 18 : 16, fontWeight: '700', color: colors.text },
+  header: { fontSize: isTablet ? 18 : 16, fontWeight: '700', color: colors.text, marginBottom: 20, zIndex: 10 },
 
   // 错误图标
   iconWrap: { marginBottom: 14, zIndex: 1 },

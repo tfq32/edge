@@ -75,7 +75,7 @@ export function InitScreen({ navigation }: Props) {
         <Animated.View style={{ width: '100%', transform: [{ scale: btnPulse }] }}>
           <Pressable
             style={({ pressed }) => [styles.mainBtn, pressed && styles.mainBtnPressed]}
-            onPress={() => navigation.replace('Scan')}
+            onPress={() => navigation.navigate('Scan')}
           >
             <QrScanIcon size={isTablet ? 22 : 20} color="white" />
             <Text style={styles.mainBtnText}>扫码连接</Text>

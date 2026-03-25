@@ -8,7 +8,7 @@ import { colors } from '../theme/colors';
 import { useAppStore } from '../store/appStore';
 import { saveConnection } from '../services/storage';
 import type { ConnectionRecord } from '../types';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Circle, Path, Polyline } from 'react-native-svg';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const isTablet = Math.min(SW, SH) >= 768;
@@ -93,7 +93,9 @@ export function WifiGuide({ navigation }: WifiGuideScreenProps) {
       {/* 顶栏 */}
       <View style={S.headerRow}>
         <Pressable style={S.backBtn} onPress={handleGoBack} hitSlop={12}>
-          <Text style={S.backArrow}>‹</Text>
+          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+            <Path d="M15 18l-6-6 6-6" stroke={colors.text} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+          </Svg>
         </Pressable>
         <Text style={S.header}>连接 WiFi</Text>
         <View style={{ width: 40 }} />
@@ -167,21 +169,12 @@ const S = StyleSheet.create({
     zIndex: 10,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.bgWhite,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 2,
-    shadowColor: 'rgba(66,170,245,0.10)',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
   },
-  backArrow: { fontSize: 26, color: colors.text, lineHeight: 30, marginTop: -2 },
   header: { fontSize: isTablet ? 18 : 16, fontWeight: '700', color: colors.text },
 
   // WiFi 涟漪

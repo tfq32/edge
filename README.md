@@ -1,4 +1,4 @@
-# EdgeApp
+# EdgeLink
 
 基于 React Native 0.84.1 的内网微服务桌面 Android App。
 

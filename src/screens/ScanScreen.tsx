@@ -5,6 +5,7 @@ import {
   StyleSheet, Text, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Camera, CameraType } from 'react-native-camera-kit';
 import WifiManager from 'react-native-wifi-reborn';
 import { CommonActions } from '@react-navigation/native';
@@ -15,7 +16,7 @@ import { useAppStore } from '../store/appStore';
 import { getConnection, saveConnection } from '../services/storage';
 import { getDeviceLayout } from '../utils/device';
 import type { ConnectionRecord } from '../types';
-import Svg, { Path, Rect } from 'react-native-svg';
+import Svg, { Path, Rect, Polyline } from 'react-native-svg';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const isTablet = Math.min(SW, SH) >= 768;
@@ -53,6 +54,18 @@ export function ScanScreen({ navigation }: ScanScreenProps) {
   const [lastRecord, setLastRecord]         = useState<ConnectionRecord | null>(null);
   const scanAnim      = useRef(new Animated.Value(0)).current;
   const lastScannedRef = useRef('');
+  const [cameraKey, setCameraKey] = useState(0);
+
+  // 页面每次获得焦点时重置扫码状态 + 强制重新挂载 Camera
+  useFocusEffect(
+    useCallback(() => {
+      setIsProcessing(false);
+      setProcessingText('正在识别...');
+      lastScannedRef.current = '';
+      // 递增 key 强制 Camera 重新挂载，解决扫码回调不恢复的问题
+      setCameraKey(prev => prev + 1);
+    }, [])
+  );
 
   useEffect(() => { const h = getConnection(); if (h) setLastRecord(h); }, []);
   useEffect(() => { requestCameraPermission().then(ok => { if (ok) setCameraReady(true); }); }, []);
@@ -149,7 +162,9 @@ export function ScanScreen({ navigation }: ScanScreenProps) {
         {/* 顶栏 */}
         <View style={S.headerRow}>
           <Pressable style={S.backBtn} onPress={handleGoBack} hitSlop={12}>
-            <Text style={S.backArrow}>‹</Text>
+            <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+              <Path d="M15 18l-6-6 6-6" stroke={colors.text} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+            </Svg>
           </Pressable>
           <Text style={S.header}>扫码连接</Text>
           <View style={{ width: 40 }} />
@@ -162,7 +177,7 @@ export function ScanScreen({ navigation }: ScanScreenProps) {
         <View style={S.frameWrap}>
           <View style={[S.frame, { width: frameSize, height: frameSize }]}>
             {cameraReady && (
-              <Camera style={StyleSheet.absoluteFillObject} cameraType={CameraType.Back}
+              <Camera key={cameraKey} style={StyleSheet.absoluteFillObject} cameraType={CameraType.Back}
                 scanBarcode={!isProcessing} showFrame={false} onReadCode={handleReadCode} scanThrottleDelay={1500}/>
             )}
             <Animated.View pointerEvents="none" style={[S.scanLine, { transform: [{ translateY: scanLineY }] }]} />
@@ -215,21 +230,12 @@ const S = StyleSheet.create({
     zIndex: 10,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.bgWhite,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 2,
-    shadowColor: 'rgba(66,170,245,0.10)',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
   },
-  backArrow: { fontSize: 26, color: colors.text, lineHeight: 30, marginTop: -2 },
   header: { fontSize: isTablet ? 18 : 16, fontWeight: '700', color: colors.text },
 
   subtitle: {

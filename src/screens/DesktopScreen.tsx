@@ -1,6 +1,6 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Animated, Dimensions, FlatList, Image, Modal, Pressable,
+  Animated, BackHandler, Dimensions, FlatList, Image, Modal, Pressable,
   RefreshControl, StyleSheet, Text, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -69,6 +69,12 @@ type MenuItem = { icon: string; label: string; value?: string; onPress?: () => v
 export function DesktopScreen({ navigation }: DesktopScreenProps) {
   const insets = useSafeAreaInsets();
   const { apps, record, setApps } = useAppStore();
+
+  // 禁用 Android 硬件返回键
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
+  }, []);
   const { isTablet: IT, columns } = getDeviceLayout();
   const [refreshing, setRefreshing] = useState(false);
   const [toastMsg, setToastMsg]     = useState('');

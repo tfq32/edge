@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, Easing, StyleSheet, Text, View } from 'react-native';
+import { Animated, BackHandler, Dimensions, Easing, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { LoadingScreenProps } from '../navigation/types';
 import { colors } from '../theme/colors';
@@ -20,6 +20,12 @@ const STEPS = [
 export function LoadingScreen({ navigation }: LoadingScreenProps) {
   const insets = useSafeAreaInsets();
   const { record, setRecord, setApps } = useAppStore();
+
+  // 禁用 Android 硬件返回键
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
+  }, []);
   const [stepIndex, setStepIndex] = useState(0);
 
   const spinAnim = useRef(new Animated.Value(0)).current;
